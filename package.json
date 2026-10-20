@@ -8,6 +8,7 @@
   "description": "WordPress.org profile cards for Spacefast Functions",
   "scripts": {
     "test": "node --test tests/*.test.mjs",
+    "build": "node --test --test-concurrency=1 tests/*.test.mjs && node tools/build.mjs",
     "dev": "node tools/serve.mjs"
   },
   "dependencies": {

@@ -1,5 +1,13 @@
 {
   "$schema": "https://spacefast.com/schemas/sf.json",
+  "build": {
+    "rootDirectory": ".",
+    "installDirectory": ".",
+    "installCommand": "npm ci --ignore-scripts --no-audit --no-fund",
+    "buildCommand": "npm run build",
+    "outputDirectory": "dist",
+    "timeoutSeconds": 900
+  },
   "index": "index.html",
   "listing": false,
   "superpowers": { "enabled": false, "disable_all_injection": true },

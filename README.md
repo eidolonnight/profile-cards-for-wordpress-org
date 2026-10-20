@@ -102,6 +102,47 @@ Every WordCamp artwork text role uses its event's embedded typography: event hea
 
 `tests/event-themes-browser.mjs` checks all 40 event/layout/role combinations through the real `/card` handler with a labeled fixture. It verifies 185 actual painted text fonts against pinned-binary PostScript identities, confirms each text node affects PNG rasterization differently from generic fallback, and proves the font guard rejects deliberate substitution. It also preserves CSP, canonical browser/server equality, background compositing and transparency checks. `tests/event-themes.test.mjs` covers exact family and weight for every text role with and without fallback initials. These are bounded verification checks, not a full WCAG-conformance claim. Re-run the tests for the current candidate rather than treating historical counts as a release gate.
 
+## Git-connected builds
+
+The repository declares its Spacefast build settings in `sf.jsonc`:
+
+| Setting | Value |
+| --- | --- |
+| Root / install directory | `.` |
+| Install command | `npm ci --ignore-scripts --no-audit --no-fund` |
+| Build command | `npm run build` |
+| Output directory | `dist` |
+
+`npm run build` runs the complete unit suite serially before generating output.
+It calls the same immutable external staging tool used for manual releases, then
+copies only that runtime allowlist into `dist/`. The temporary stage is cleaned
+up; package manifests, dependencies, tests, source font binaries, instructions,
+and release evidence are not copied into the runtime output. Spacefast then
+compiles the Functions handlers with the dependencies installed at the repository
+root. The separate browser renderer copies and deterministic asset revisions are
+preserved. `dist/` is generated and ignored by Git, not a second source tree.
+
+Use Node.js 20.19.0 or newer and keep `TMPDIR` outside the checkout. Builds refuse
+any existing `dist` file, directory or symlink rather than overwriting it. For a
+local rebuild, first move or remove only the previous generated `dist/` after
+checking it contains nothing you need. Remote builds should use fresh checkouts.
+
+Connect the existing Space to the intended repository and production branch.
+Choose push-to-production and preview behavior explicitly; a push to an enabled
+production branch is a deployment, not merely a source update. The connection's
+saved build overrides must agree with `sf.jsonc`. Do not rely on automatic
+detection: a Functions repository can otherwise skip installation and fail to
+resolve `linkedom/worker`. Keep Space/team IDs, app installation IDs, credentials
+and receipts in provider settings or private operational records, not Git.
+
+After a deployment, verify the exact Git commit, successful build, ready Version,
+live pointer, runtime, asset catalog and existing access policy. A successful
+repository sync alone does not prove a working deployment. To stop automatic
+publishing, pause production push builds on the existing connection. If rollback
+is needed, pause builds first and promote the previously verified Version; then
+revert or repair the source before resuming. Disconnecting the repository stops
+future builds but does not restore an earlier live Version.
+
 ## Deployment boundary
 
 Deployment is a separate, explicitly authorized operation. Neither running tests,
