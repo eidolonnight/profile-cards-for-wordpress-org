@@ -6,7 +6,7 @@ Not all installed dependency code is necessarily bundled.
 
 WAPUU BRANDING ARTWORK
 
-site-logo.png, favicon.png and favicon.ico are resized derivatives of the
+site-logo.png, favicon.png and site-favicon.ico are resized derivatives of the
 user-supplied newsboy Wapuu artwork. The supplied image carries this attribution:
 Wapuu designed by Kazuko Kaneuchi; derivative under GPL-2.0-or-later.
 WordPress trademarks remain subject to their applicable rights.

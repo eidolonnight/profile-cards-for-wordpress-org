@@ -16,11 +16,15 @@ square. Header rendering is 56 CSS pixels on desktop and 48 on narrow screens.
 
 - `public/site-logo.png`: 192 × 192, RGBA.
 - `public/favicon.png`: 96 × 96, RGBA.
-- `public/favicon.ico`: 16 × 16, 32 × 32 and 48 × 48 RGBA frames.
+- `public/site-favicon.ico`: 16 × 16, 32 × 32 and 48 × 48 RGBA frames.
 
 The source stays in Git, outside the runtime staging allowlist. Only the three
 small derivatives are published. `tools/stage.mjs` adds the same content-derived
 cache revision used for the other browser assets to their HTML references.
+
+The ICO uses an explicit nonreserved filename because the hosting edge serves
+its own default at `/favicon.ico`, even with a revision query. Both declared
+favicon URLs must return the exact published artwork.
 
 ## Export recipe
 
@@ -49,7 +53,7 @@ def derivative(size):
 
 for name, size in [('site-logo.png', 192), ('favicon.png', 96)]:
     derivative(size).save(root / 'public' / name, optimize=True, pnginfo=metadata)
-derivative(48).save(root / 'public/favicon.ico', sizes=[(16, 16), (32, 32), (48, 48)])
+derivative(48).save(root / 'public/site-favicon.ico', sizes=[(16, 16), (32, 32), (48, 48)])
 ```
 
 PNG compression can vary between Pillow versions; preserve decoded dimensions,

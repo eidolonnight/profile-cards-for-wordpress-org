@@ -36,7 +36,7 @@ test('local favicon declarations include PNG and multiresolution ICO assets', ()
   assert.deepEqual([...document.querySelectorAll('link[rel="icon"]')].map(link => ({
     href: link.getAttribute('href'), type: link.getAttribute('type'), sizes: link.getAttribute('sizes'),
   })), [
-    { href: '/favicon.ico', type: 'image/x-icon', sizes: '16x16 32x32 48x48' },
+    { href: '/site-favicon.ico', type: 'image/x-icon', sizes: '16x16 32x32 48x48' },
     { href: '/favicon.png', type: 'image/png', sizes: '96x96' },
   ]);
 });
@@ -52,7 +52,7 @@ test('logo and favicon PNGs retain RGBA encoding and bounded dimensions', async 
     assert.equal(bytes[25], 6, 'truecolor with alpha');
     assert.ok(bytes.length < 100000, 'small branding asset');
   }
-  const ico = await readFile(new URL('../public/favicon.ico', import.meta.url));
+  const ico = await readFile(new URL('../public/site-favicon.ico', import.meta.url));
   assert.equal(ico.readUInt16LE(0), 0);
   assert.equal(ico.readUInt16LE(2), 1);
   assert.equal(ico.readUInt16LE(4), 3);
@@ -64,5 +64,5 @@ test('Wapuu creator and supplied derivative license are preserved', async () => 
   assert.match(notices, /Wapuu designed by Kazuko Kaneuchi/);
   assert.match(notices, /derivative under GPL-2\.0-or-later/);
   assert.match(notices, /site-logo\.png/);
-  assert.match(notices, /favicon\.ico/);
+  assert.match(notices, /site-favicon\.ico/);
 });

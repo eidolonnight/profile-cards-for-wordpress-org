@@ -11,7 +11,7 @@ const root = fileURLToPath(new URL('../public/', import.meta.url));
 files.set('/background.js', ['background.js', 'text/javascript']);
 files.set('/theme.js', ['theme.js', 'text/javascript']);
 for (const name of ['site-logo.png', 'favicon.png']) files.set(`/${name}`, [name, 'image/png']);
-files.set('/favicon.ico', ['favicon.ico', 'image/x-icon']);
+files.set('/site-favicon.ico', ['site-favicon.ico', 'image/x-icon']);
 // Public modules are an exact allowlist, never a filesystem path from the URL.
 const shared = new Map(['preview.js', 'options.js', 'svg.js', 'social.js', 'fonts.js', 'events.js', 'event-themes.js', 'event-fonts.js'].map(name => [`/preview/${name}`, new URL(`../shared/${name}`, import.meta.url)]));
 const port = Number(process.env.PORT || 4197);
