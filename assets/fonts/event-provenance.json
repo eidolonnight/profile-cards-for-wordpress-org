@@ -1,0 +1,103 @@
+[
+  {
+    "path": "Faculty-Glyphic-400.woff2",
+    "source": "https://asia.wordcamp.org/2027/files/fonts/RrQIbot2-iBvI2mYSyKIrcgoBuQIHueFNVmULg.woff2",
+    "sha256": "7edcfe9794f130968eab307284dee2279696202f3ce4274ad43044ed4e566272",
+    "bytes": 26424,
+    "family": "Faculty Glyphic",
+    "weights": [
+      400
+    ]
+  },
+  {
+    "path": "Kumbh-Sans-400.woff2",
+    "source": "https://asia.wordcamp.org/2027/files/fonts/c4mP1n92AsfhuCq6tVsaoIx1LQICk0boNoq0SjlDfnzKo-bF3mdQkZYA9LTuUkqaLg.woff2",
+    "sha256": "cb15928cd240527d5feb27403cae12e6b48d6c4fd2be61e460c6ca373cfde63a",
+    "bytes": 18804,
+    "family": "Kumbh Sans",
+    "weights": [
+      400
+    ]
+  },
+  {
+    "path": "Kumbh-Sans-500.woff2",
+    "source": "https://asia.wordcamp.org/2027/files/fonts/c4mP1n92AsfhuCq6tVsaoIx1LQICk0boNoq0SjlDfnzKo-bF3mdQo5YA9LTuUkqaLg.woff2",
+    "sha256": "6e66cb2255953cee13cc762f295a04c4a0532ae11d35090bceb24efacbe5c311",
+    "bytes": 19104,
+    "family": "Kumbh Sans",
+    "weights": [
+      500
+    ]
+  },
+  {
+    "path": "Cardo-400.woff2",
+    "source": "https://europe.wordcamp.org/2027/wp-content/themes/twentytwentyfour/assets/fonts/cardo/cardo_normal_400.woff2",
+    "sha256": "aa8042a77500cfe4a4893e2b7edbd54dded92768e40418fa0665bec8aae9ae18",
+    "bytes": 146060,
+    "family": "Cardo",
+    "weights": [
+      400
+    ]
+  },
+  {
+    "path": "Cardo-700.woff2",
+    "source": "https://europe.wordcamp.org/2027/wp-content/themes/twentytwentyfour/assets/fonts/cardo/cardo_normal_700.woff2",
+    "sha256": "bca42f8b5a5283b975115421b3b4171cf89b88bf39ef52538c9494860414c292",
+    "bytes": 132564,
+    "family": "Cardo",
+    "weights": [
+      700
+    ]
+  },
+  {
+    "path": "Open-Sans-300.woff2",
+    "source": "https://fonts.gstatic.com/s/opensans/v44/memSYaGs126MiZpBA-UvWbX2vVnXBbObj2OVZyOOSr4dVJWUgsiH0C4n.ttf",
+    "sourcePath": "Open-Sans-300.ttf",
+    "sourceSha256": "afdae82811cf046213e1f65db56ffd21e01a7fb0e5d6194c34717df15535338b",
+    "sha256": "f995ed8b6c01b78712128fa8c9e7fa1cb834e418dd5b7b3370f5248f71536fe3",
+    "bytes": 56008,
+    "family": "Open Sans",
+    "weights": [
+      300
+    ],
+    "conversion": "fontTools 4.57.0 lossless WOFF2 compression; no subset or internal renaming"
+  },
+  {
+    "path": "Open-Sans-400.woff2",
+    "source": "https://fonts.gstatic.com/s/opensans/v44/memSYaGs126MiZpBA-UvWbX2vVnXBbObj2OVZyOOSr4dVJWUgsjZ0C4n.ttf",
+    "sourcePath": "Open-Sans-400.ttf",
+    "sourceSha256": "47ed1cfaa7ffca04a04ab850b2938fd52c09d1b44cfa3e2980878e166b0cbd87",
+    "sha256": "8b2f72ae335b5bdbd1c09b38da9ab12e9046a6a28eb637ccf307519b281e133c",
+    "bytes": 56300,
+    "family": "Open Sans",
+    "weights": [
+      400
+    ],
+    "conversion": "fontTools 4.57.0 lossless WOFF2 compression; no subset or internal renaming"
+  },
+  {
+    "path": "Open-Sans-600.woff2",
+    "source": "https://fonts.gstatic.com/s/opensans/v44/memSYaGs126MiZpBA-UvWbX2vVnXBbObj2OVZyOOSr4dVJWUgsgH1y4n.ttf",
+    "sourcePath": "Open-Sans-600.ttf",
+    "sourceSha256": "733eb93b167e6d45de09aa768f6c0355647c2c26f5416dbc7407a08ed41e81c6",
+    "sha256": "916b007693dc97c697f7a2f6e98ca9a8a894b6ada2f172881c1cfbfa78c14487",
+    "bytes": 56284,
+    "family": "Open Sans",
+    "weights": [
+      600
+    ],
+    "conversion": "fontTools 4.57.0 lossless WOFF2 compression; no subset or internal renaming"
+  },
+  {
+    "path": "Inter-latin.woff2",
+    "source": "https://profiles.wordpress.org/wp-content/mu-plugins/pub-sync/global-fonts/Inter/Inter-latin.woff2",
+    "sha256": "fc4951f0824bd067d107592ae2dc5f1309da1ad69a90c13a7158d7fcb99dc805",
+    "bytes": 77524,
+    "family": "Inter",
+    "weights": [
+      400,
+      600
+    ],
+    "note": "Reuse existing licensed WordPress.org Inter Latin; same family/weights as Europe and India computed styles, not the larger theme binary."
+  }
+]

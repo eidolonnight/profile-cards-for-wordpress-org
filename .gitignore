@@ -1,0 +1,34 @@
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+secrets/
+.spacefast/
+*storage-state*.json
+*browser-state*.json
+*open-receipt*.json
+private-launcher*.html
+
+# Installed tooling, caches and local evidence; keep releases outside source
+node_modules/
+.venv/
+.venv-*/
+__pycache__/
+*.py[cod]
+.cache/
+.tmp/
+evidence/
+test-results/
+playwright-report/
+coverage/
+dist/
+build/
+releases/
+*.log
+
+# Editor and OS files
+.DS_Store
+.idea/
+.vscode/

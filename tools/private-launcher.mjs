@@ -1,0 +1,14 @@
+import { readFile, writeFile, mkdir, chmod } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
+const [receiptPath, output] = process.argv.slice(2);
+if (!receiptPath || !output) throw new Error('Usage: node tools/private-launcher.mjs <saved-sf-open-json> <owner-only-html-path>');
+const data = JSON.parse(await readFile(receiptPath, 'utf8')).data;
+const access = data.open;
+if (!access?.url || !access?.expiresAt) throw new Error('Expected sf open receipt with URL and expiry.');
+const url = new URL(access.url);
+if (url.protocol !== 'https:' || !(url.hostname === 'spacefast.com' || url.hostname.endsWith('.spacefast.com') || url.hostname.endsWith('.view.fast'))) throw new Error('Unexpected private access origin.');
+const escape = value => String(value).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]);
+const html = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Open Profile Cards for WordPress.org</title><style>.launcher{display:inline-block;max-width:460px;padding:20px;border:1px solid var(--border,#d7d8d3);border-radius:8px;color:var(--foreground,#191e23)}h2{font-size:20px;margin:0 0 8px}p{margin:0 0 16px;color:var(--muted-foreground,#50575e);font-size:14px}a{display:inline-block;padding:12px 18px;border:1px solid var(--border,#aaa);border-radius:5px;color:var(--foreground,#191e23);text-decoration:none;font-weight:600}a:hover{text-decoration:underline}small{display:block;max-width:350px;margin-top:14px;color:var(--muted-foreground,#50575e)}</style><section class="launcher"><h2>Profile Cards for WordPress.org</h2><p>Private access</p><a id="open-private" href="${escape(access.url)}" target="_blank" rel="noopener noreferrer">Open private app ↗</a><small>This temporary, single-use author link expires ${escape(new Date(access.expiresAt).toLocaleString('en-US', { timeZone:'America/New_York', dateStyle:'medium', timeStyle:'short' }))} Eastern. Keep it private.</small></section>`;
+await mkdir(dirname(resolve(output)), { recursive: true, mode: 0o700 });
+await writeFile(output, html, { mode: 0o600 }); await chmod(output, 0o600);
+console.log(JSON.stringify({ launcher: resolve(output), expiresAt: access.expiresAt }));

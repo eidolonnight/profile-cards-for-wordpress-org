@@ -1,0 +1,14 @@
+[
+  {
+    "path": "assets/fonts/EBGaramond-latin.woff2",
+    "source": "https://profiles.wordpress.org/wp-content/mu-plugins/pub-sync/global-fonts/EB-Garamond/EBGaramond-latin.woff2",
+    "sha256": "6bca857ff2832e3d5cceb8b4376f3f1f9df403491e1e2500ecdab2242b191464",
+    "bytes": 110724
+  },
+  {
+    "path": "assets/fonts/Inter-latin.woff2",
+    "source": "https://profiles.wordpress.org/wp-content/mu-plugins/pub-sync/global-fonts/Inter/Inter-latin.woff2",
+    "sha256": "fc4951f0824bd067d107592ae2dc5f1309da1ad69a90c13a7158d7fcb99dc805",
+    "bytes": 77524
+  }
+]

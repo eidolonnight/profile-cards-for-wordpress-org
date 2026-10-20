@@ -1,0 +1,13 @@
+{
+  "$schema": "https://spacefast.com/schemas/sf.json",
+  "index": "index.html",
+  "listing": false,
+  "superpowers": { "enabled": false, "disable_all_injection": true },
+  "headers": [{ "source": "/*", "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }, { "key": "X-Content-Type-Options", "value": "nosniff" }, { "key": "Referrer-Policy", "value": "no-referrer" }] }],
+  "runtime": {
+    "kind": "functions",
+    "database": false,
+    "fetch": true,
+    "compatibilityDate": "2026-07-01"
+  }
+}

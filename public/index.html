@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Make WordPress.org profile cards, round WordCamp avatar frames, and participation announcements. Built for contributors.">
+  <meta name="color-scheme" content="light dark">
+  <link rel="canonical" href="https://profiles.wapuu.news/">
+  <meta property="og:url" content="https://profiles.wapuu.news/">
+  <title>Profile Cards for WordPress.org</title>
+  <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#builder">Skip to card builder</a>
+  <header class="site-header shell">
+    <a class="wordmark" href="/" aria-label="Profile Cards for WordPress.org home"><span class="brand-mark" aria-hidden="true">[ : ]</span> Profile Cards for WordPress.org</a>
+    <div class="header-tools"><span class="edition">Built for contributors</span><div id="site-theme-control" class="site-theme-control" hidden><button id="site-theme" class="button" type="button" aria-label="Switch site appearance"><svg class="theme-sun" aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg><svg class="theme-moon" aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"><path d="M20.5 14A9 9 0 0 1 10 3.5 9 9 0 1 0 20.5 14Z"/></svg></button></div></div>
+  </header>
+  <main class="shell">
+    <div class="intro">
+      <p class="intro-copy">Bring your WordPress.org profile with you. Make a contributor card, frame your avatar, or announce your next WordCamp.</p>
+    </div>
+    <noscript><p class="notice">JavaScript is needed to build and download a card. Your public profile is still available at <a href="https://profiles.wordpress.org/">profiles.wordpress.org</a>.</p></noscript>
+    <div class="builder" id="builder">
+      <section class="controls" aria-labelledby="build-title">
+        <div class="section-heading"><span class="step" aria-hidden="true">01</span><h2 id="build-title">Make your card</h2></div>
+        <form id="profile-form">
+          <label for="username">WordPress.org username</label>
+          <p class="field-help" id="username-help">Use your profile’s lowercase username, not your display name or its full URL.</p>
+          <div class="profile-entry"><input id="username" name="username" type="text" required maxlength="60" pattern="[a-z0-9][a-z0-9._\-]*" placeholder="Your WordPress.org Username" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="username-help"><button class="button primary" type="submit" id="create-button">Create card <span aria-hidden="true">↗</span></button></div>
+          <p class="field-help">Profile data may be cached for up to 15 minutes.</p>
+        </form>
+        <div class="layout-setting"><label for="layout">What would you like to make?</label><select id="layout" aria-describedby="layout-help"><option value="profile" selected>Landscape banner</option><option value="square">Vertical card</option><option value="avatar">WordCamp avatar frame</option><option value="announcement">WordCamp social card</option><option value="classic" hidden>Legacy card</option></select><p id="layout-help" class="field-help">Choose a banner, profile card, circular avatar frame, or 4:5 WordCamp social card.</p></div>
+        <section id="event-settings" class="event-settings" aria-labelledby="event-heading" hidden>
+          <fieldset id="event-controls" disabled>
+            <legend id="event-heading">Your WordCamp</legend>
+            <div class="event-selects">
+              <div><label for="event">Flagship event</label><select id="event" aria-describedby="event-note"></select></div>
+              <div><label for="role">I’m…</label><select id="role" aria-describedby="role-help"></select></div>
+            </div>
+            <label class="check-label" for="eventDetails"><input type="checkbox" id="eventDetails" checked> Event dates &amp; location</label>
+          </fieldset>
+          <p id="event-note" class="field-help" aria-live="polite">Loading the event list…</p>
+          <a id="event-source" class="event-source" target="_blank" rel="noopener noreferrer" hidden>Check the official event site <span aria-hidden="true">↗</span></a>
+          <button id="retry-events" class="button" type="button" hidden>Retry event list</button>
+        </section>
+        <div class="settings-columns">
+          <fieldset class="display-settings" id="display-settings">
+            <legend>Profile content</legend>
+            <p id="public-fields-help" class="field-help">Only available public details appear. Missing fields are left out automatically.</p>
+            <div class="profile-content-options">
+              <label class="check-label" for="avatar"><input type="checkbox" id="avatar" checked> <span id="avatar-label">Avatar</span></label>
+              <div id="profile-fields" class="profile-detail-controls">
+                <label class="check-label" for="name"><input type="checkbox" id="name" checked> Name</label>
+                <label class="check-label" for="handle"><input type="checkbox" id="handle" checked> Username</label>
+                <label class="check-label" for="jobTitle"><input type="checkbox" id="jobTitle" checked> Job title</label>
+                <label class="check-label" for="organization"><input type="checkbox" id="organization" checked> Organization</label>
+                <label class="check-label" for="location"><input type="checkbox" id="location" checked> Location</label>
+                <label class="check-label" for="joined"><input type="checkbox" id="joined" checked> Joined date</label>
+                <label class="check-label" for="teams"><input type="checkbox" id="teams" checked> Teams</label>
+              </div>
+              <label class="check-label" for="badges"><input type="checkbox" id="badges" checked> Badges</label>
+              <label class="check-label" for="badgeNames"><input type="checkbox" id="badgeNames" checked> Badge names</label>
+              <label class="check-label" for="link" id="profile-link-setting"><input type="checkbox" id="link" checked> Profile link</label>
+              <label id="social-setting" class="check-label" for="social"><input type="checkbox" id="social" aria-describedby="social-help" checked> Social links</label>
+              <p id="social-help" class="field-help">Includes available public links. SVG links are clickable; PNG icons are not clickable.</p>
+              <details id="individual-details" class="advanced" hidden>
+                <summary>Choose individual teams</summary>
+                <p class="field-help">Uncheck any item to leave it off this card.</p>
+                <fieldset id="team-items"><legend>Teams</legend><div id="team-options" class="toggle-grid"></div><p id="teams-empty" class="field-help" hidden>No public teams are available for this profile.</p></fieldset>
+              </details>
+            </div>
+
+          </fieldset>
+          <details id="customize-colors" class="advanced"><summary>Colors &amp; background</summary>
+              <div class="presets"><button id="preset-event" class="button preset" type="button" hidden>Event colors</button><button id="preset-light" class="button preset" type="button"><span class="swatch light" aria-hidden="true"></span>Light</button><button id="preset-dark" class="button preset" type="button"><span class="swatch dark" aria-hidden="true"></span>Dark</button></div>
+              <p class="field-help">Keep text distinct from the background so your card stays readable.</p>
+              <div class="color-grid" id="color-settings">
+                <label class="color-label" for="foreground"><span>Background</span><input type="color" id="foreground" value="#ffffff"></label>
+                <label class="color-label" for="headerColor"><span>Header</span><input type="color" id="headerColor" value="#191e23"></label>
+                <label class="color-label" for="nameColor"><span>Name</span><input type="color" id="nameColor" value="#191e23"></label>
+                <label class="color-label" for="subHeaderColor"><span>Secondary text</span><input type="color" id="subHeaderColor" value="#50575e"></label>
+                <label class="color-label" for="badgeLabelColor"><span>Badge labels</span><input type="color" id="badgeLabelColor" value="#23282d"></label>
+              </div>
+          <fieldset class="background-settings">
+            <legend>Background image</legend>
+            <p class="field-help" id="background-help">Choose a JPEG, PNG or WebP, up to 10 MiB and 32 megapixels. It stays in this page, is never uploaded, and is cleared when you reload. Downloads include your background.</p>
+            <input id="background-file" type="file" accept="image/jpeg,image/png,image/webp" aria-label="Choose background image" hidden>
+            <div class="background-actions"><button id="background-choose" class="button" type="button" aria-describedby="background-help">Choose background image</button><button id="background-remove" class="button" type="button" hidden>Remove background</button></div>
+            <p id="background-status" class="field-help" role="status" aria-live="polite" aria-atomic="true">No custom background selected.</p>
+            <fieldset id="background-controls" class="background-controls" hidden disabled>
+              <legend class="sr-only">Adjust background image</legend>
+              <p id="background-shape-note" class="field-help">The image fills the card. Adjust the crop and add a tint to keep your text readable.</p>
+              <div class="background-crop">
+                <div class="range-control"><label for="background-x">Horizontal position <output id="background-x-value" for="background-x">50%</output></label><input id="background-x" type="range" min="0" max="100" step="1" value="50"></div>
+                <div class="range-control"><label for="background-y">Vertical position <output id="background-y-value" for="background-y">50%</output></label><input id="background-y" type="range" min="0" max="100" step="1" value="50"></div>
+                <div class="range-control"><label for="background-zoom">Zoom <output id="background-zoom-value" for="background-zoom">1×</output></label><input id="background-zoom" type="range" min="1" max="3" step="0.05" value="1"></div>
+              </div>
+              <div class="background-tint-controls">
+                <label class="color-label" for="background-tint"><span>Tint color</span><input id="background-tint" type="color" value="#ffffff"></label>
+                <div class="range-control"><label for="background-strength">Tint strength <output id="background-strength-value" for="background-strength">35%</output></label><input id="background-strength" type="range" min="0" max="100" step="1" value="35"></div>
+              </div>
+            </fieldset>
+          </fieldset>
+          </details>
+        </div>
+      </section>
+      <section class="result" aria-labelledby="preview-title">
+        <div class="section-heading"><span class="step" aria-hidden="true">02</span><h2 id="preview-title">Take it with you</h2><span class="preview-label">Live preview</span></div>
+        <div id="preview-stage" class="preview-stage" aria-busy="false">
+          <div id="empty-state" class="empty-state"><span class="empty-symbol" aria-hidden="true">＋</span><h3 id="empty-title">A small card. Your story.</h3><p id="empty-description">Enter a username to see your real profile here.</p></div>
+          <img id="card-preview" alt="" hidden>
+        </div>
+        <p id="status" class="status" role="status" aria-live="polite" aria-atomic="true"><span id="status-message">Ready when you are.</span><span id="cache-note"></span><span id="status-warning"></span></p>
+        <div id="profile-meta" class="profile-meta" hidden><div class="profile-meta-links"><a id="open-preview" target="_blank" rel="noopener noreferrer">View full-size card <span aria-hidden="true">↗</span></a><a id="profile-link" href="https://profiles.wordpress.org/" target="_blank" rel="noopener noreferrer">View source profile <span aria-hidden="true">↗</span></a></div></div>
+        <fieldset id="exports" class="exports" disabled>
+          <legend class="sr-only">Download your card</legend>
+          <div class="download-actions"><button id="download-png" class="button primary" type="button">Download PNG</button><button id="download-svg" class="button" type="button">Download SVG</button></div>
+        </fieldset>
+      </section>
+    </div>
+    <section class="about" aria-labelledby="about-title"><h2 id="about-title">Your profile. A little more portable.</h2><div><p>Cards and WordCamp graphics use public WordPress.org profile data. No account to create. Custom backgrounds are processed in your browser, never uploaded or saved by this tool. Your downloaded cards stay on your device.</p><p>Profile Cards for WordPress.org is an independent community tool, not an official WordPress service.</p><p id="role-help">Your participation role is self-reported. These personal graphics are not official event badges or proof of registration.</p></div></section>
+  </main>
+  <footer class="site-footer shell"><p>Inspired by <a href="https://github.com/donini/wp-profiles-card" target="_blank" rel="noopener noreferrer">CardPress by donini <span aria-hidden="true">↗</span></a>. Independently implemented. <a href="/THIRD-PARTY-NOTICES.txt">Dependency licenses</a> · <a href="/FONT-LICENSES.txt">Font licenses</a>.</p></footer>
+</body>
+</html>
