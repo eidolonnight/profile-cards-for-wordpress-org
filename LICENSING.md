@@ -78,6 +78,16 @@ Do not relabel the embedded fonts as GPL or remove their notices when distributi
 compiled assets. Follow [the event-theme guide](docs/event-themes.md) when changing
 fonts, their metrics or their provenance.
 
+## Wapuu branding artwork
+
+The supplied newsboy Wapuu, its header logo and its favicon derivatives are
+GPL-2.0-or-later. Wapuu was designed by Kazuko Kaneuchi. The original supplied
+image and its embedded attribution are preserved in `assets/branding/`; see the
+[branding source and export recipe](assets/branding/README.md).
+The hosted [third-party notices](public/THIRD-PARTY-NOTICES.txt) retain that credit.
+WordPress trademarks remain subject to their applicable rights; the artwork does
+not make this an official WordPress service.
+
 ## External content, identity and attribution
 
 Public WordPress.org profile text, avatars, linked social profiles, and visitor-supplied

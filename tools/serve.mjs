@@ -10,6 +10,8 @@ const files = new Map([['/', ['index.html', 'text/html']], ['/create', ['index.h
 const root = fileURLToPath(new URL('../public/', import.meta.url));
 files.set('/background.js', ['background.js', 'text/javascript']);
 files.set('/theme.js', ['theme.js', 'text/javascript']);
+for (const name of ['site-logo.png', 'favicon.png']) files.set(`/${name}`, [name, 'image/png']);
+files.set('/favicon.ico', ['favicon.ico', 'image/x-icon']);
 // Public modules are an exact allowlist, never a filesystem path from the URL.
 const shared = new Map(['preview.js', 'options.js', 'svg.js', 'social.js', 'fonts.js', 'events.js', 'event-themes.js', 'event-fonts.js'].map(name => [`/preview/${name}`, new URL(`../shared/${name}`, import.meta.url)]));
 const port = Number(process.env.PORT || 4197);
@@ -23,7 +25,7 @@ http.createServer(async (req, res) => {
     else if (shared.has(url.pathname)) response = new Response(await readFile(shared.get(url.pathname)), { headers: { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'X-Robots-Tag': 'noindex, nofollow' } });
     else if (files.has(url.pathname)) {
       const [file, type] = files.get(url.pathname);
-      response = new Response(await readFile(root + file), { headers: { 'Content-Type': type + '; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'X-Robots-Tag': 'noindex, nofollow' } });
+      response = new Response(await readFile(root + file), { headers: { 'Content-Type': type.startsWith('text/') ? type + '; charset=utf-8' : type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'X-Robots-Tag': 'noindex, nofollow' } });
     } else response = new Response('Not found', { status: 404 });
     res.writeHead(response.status, Object.fromEntries(response.headers));
     res.end(req.method === 'HEAD' ? undefined : Buffer.from(await response.arrayBuffer()));

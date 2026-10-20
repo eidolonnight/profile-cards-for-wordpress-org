@@ -18,6 +18,7 @@ const root = resolve(destination); const release = dirname(root);
 if (dirname(release) !== base || basename(root) !== 'site' || !/^[a-zA-Z0-9][a-zA-Z0-9._-]+$/.test(basename(release))) throw new Error('Stage must be <owned releases root>/<new release name>/site.');
 const entries = [
   ['public/index.html', 'index.html'], ['public/app.js', 'app.js'], ['public/styles.css', 'styles.css'], ['public/background.js', 'background.js'], ['public/theme.js', 'theme.js'],
+  ...['site-logo.png', 'favicon.png', 'favicon.ico'].map(name => [`public/${name}`, name]),
   ['public/index.html', 'create.html'], ['public/THIRD-PARTY-NOTICES.txt', 'THIRD-PARTY-NOTICES.txt'], ['public/FONT-LICENSES.txt', 'FONT-LICENSES.txt'], ['LICENSE', 'LICENSE'], ['sf.jsonc', 'sf.jsonc'],
   ['functions/_fonts.js', 'functions/_fonts.js'], ['functions/_profile.js', 'functions/_profile.js'], ['functions/_svg.js', 'functions/_svg.js'], ['functions/json.js', 'functions/json.js'], ['functions/card.js', 'functions/card.js'],
   ['functions/_events.js', 'functions/_events.js'], ['functions/_social.js', 'functions/_social.js'], ['functions/events.js', 'functions/events.js'],
@@ -47,7 +48,7 @@ const revision = revisionHash.digest('hex');
 function browserBytes(to, bytes) {
   // Transform only staged browser copies. Backend imports and local dev stay canonical.
   if (to === 'index.html' || to === 'create.html') {
-    return Buffer.from(bytes.toString('utf8').replace(/\b(src|href)=(['"])(\/(?:app\.js|theme\.js|styles\.css))\2/g,
+    return Buffer.from(bytes.toString('utf8').replace(/\b(src|href)=(['"])(\/(?:app\.js|theme\.js|styles\.css|site-logo\.png|favicon\.png|favicon\.ico))\2/g,
       (_, attribute, quote, path) => `${attribute}=${quote}${path}?v=${revision}${quote}`));
   }
   if (to === 'app.js') {

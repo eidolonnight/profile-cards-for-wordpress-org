@@ -4,6 +4,15 @@ WP Profile Cards uses linkedom/worker in its server-side Functions bundle.
 These license notices are retained from the installed production dependencies.
 Not all installed dependency code is necessarily bundled.
 
+WAPUU BRANDING ARTWORK
+
+site-logo.png, favicon.png and favicon.ico are resized derivatives of the
+user-supplied newsboy Wapuu artwork. The supplied image carries this attribution:
+Wapuu designed by Kazuko Kaneuchi; derivative under GPL-2.0-or-later.
+WordPress trademarks remain subject to their applicable rights.
+The original supplied PNG and export recipe are in assets/branding/ in the
+project source. The complete GPL version 2 text is provided at /LICENSE.
+
 
 ========================================================================
 boolbase/LICENSE

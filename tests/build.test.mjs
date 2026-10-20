@@ -50,7 +50,7 @@ test('repository build matches immutable staging exactly and excludes source-onl
   const before = await inventory(project);
   const result = run(); assert.ifError(result.error); assert.equal(result.status, 0, result.stderr);
   const output = JSON.parse(result.stdout);
-  assert.equal(output.outputDirectory, 'dist'); assert.equal(output.files, 35);
+  assert.equal(output.outputDirectory, 'dist'); assert.equal(output.files, 38);
   assert.match(output.assetRevision, /^[a-f0-9]{64}$/);
   const releases = join(base, 'comparison'); const release = join(releases, 'release-01');
   const staged = spawnSync(process.execPath, [join(project, 'tools/stage.mjs'), join(release, 'site')], {
