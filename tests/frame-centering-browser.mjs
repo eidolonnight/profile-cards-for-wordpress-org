@@ -5,6 +5,8 @@ import { createServer } from 'node:http';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { renderSocial } from '../shared/social.js';
 import { EVENTS, ROLES } from '../shared/events.js';
+import { BROWSER_MODULES, browserModuleSource } from '../tools/browser-modules.mjs';
+const modules = new Map(BROWSER_MODULES.map(([source, path]) => [`/${path}`, source]));
 
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const evidence = process.env.EVIDENCE_DIR;
@@ -13,10 +15,10 @@ await mkdir(evidence, { recursive: true });
 const profile = { name: 'Frame Test', userName: 'frame-test' };
 const server = createServer(async (req, res) => {
   if (req.url === '/') { res.end('<!doctype html><title>Offline frame regression</title>'); return; }
-  if (!/^\/shared\/(social|events|options|fonts|svg|event-themes|event-fonts)\.js$/.test(req.url)) { res.writeHead(404).end(); return; }
+  if (!modules.has(req.url)) { res.writeHead(404).end(); return; }
   try {
     res.setHeader('Content-Type', 'text/javascript');
-    res.end(await readFile(new URL('..' + req.url, import.meta.url)));
+    res.end(browserModuleSource(req.url.slice(1), await readFile(new URL('../' + modules.get(req.url), import.meta.url), 'utf8')));
   } catch { res.writeHead(500).end(); }
 });
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -29,7 +31,7 @@ try {
   page.on('pageerror', e => report.pageErrors.push(e.message));
   page.on('request', req => { if (/^https?:/.test(req.url()) && new URL(req.url()).origin !== origin) report.externalRequests.push(req.url()); });
   await page.goto(origin);
-  await page.evaluate(async () => { window.renderSocial = (await import('/shared/social.js')).renderSocial; });
+  await page.evaluate(async () => { window.renderSocial = (await import('/preview/social.js')).renderSocial; });
   for (const event of EVENTS) for (const role of ROLES) {
     const key = `${event.id}-${role.id}`;
     const options = { layout: 'avatar', avatar: false, event: event.id, role: role.id };

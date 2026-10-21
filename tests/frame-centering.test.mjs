@@ -35,8 +35,8 @@ test('all catalogue frame labels center their visible uppercase cap bands', () =
 test('frame baselines use fitted sizes, including the 48px minimum', async () => {
   // Substitute only the catalogue dependency to exercise longer future labels.
   // Real fitting, SVG serialization and font metrics are unchanged; no runtime API for tests.
-  const url = new URL('../shared/social.js', import.meta.url);
-  const source = (await readFile(url, 'utf8')).replace("import { EVENTS, ROLES } from './events.js';", `const EVENTS = ${JSON.stringify([{ ...EVENTS[0], label: 'W'.repeat(23) }])}; const ROLES = ${JSON.stringify([{ ...ROLES[0], statement: 'W'.repeat(23) }])};`).replace(/from '(\.\/[^']+)'/g, (_, path) => `from '${new URL(path, url).href}'`);
+  const url = new URL('../events/social.js', import.meta.url);
+  const source = (await readFile(url, 'utf8')).replace("import { EVENTS, ROLES } from './catalog.js';", `const EVENTS = ${JSON.stringify([{ ...EVENTS[0], label: 'W'.repeat(23) }])}; const ROLES = ${JSON.stringify([{ ...ROLES[0], statement: 'W'.repeat(23) }])};`).replace(/from '(\.{1,2}\/[^']+)'/g, (_, path) => `from '${new URL(path, url).href}'`);
   const { renderSocial: withLongLabels } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
   const d = checkCentered(withLongLabels(profile));
   const sizes = [...d.querySelectorAll('textPath')].map(n => Number(n.parentNode.getAttribute('font-size')));

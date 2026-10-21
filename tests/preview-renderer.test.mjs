@@ -14,6 +14,7 @@ import { renderCard as serverCard } from '../functions/_svg.js';
 import { renderSocial } from '../shared/social.js';
 import { renderSocial as serverSocial } from '../functions/_social.js';
 import { FONT_CSS, FONT_STYLE_HASH } from '../shared/fonts.js';
+import { BROWSER_MODULES } from '../tools/browser-modules.mjs';
 
 const digest = value => createHash('sha256').update(value).digest('hex');
 const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
@@ -85,20 +86,22 @@ test('font module bytes and style hash are unchanged', async () => {
 });
 
 test('browser module graph runs without fetch, linkedom, Node or DOM globals', () => {
-  const directory = fileURLToPath(new URL('../shared/', import.meta.url));
+  const directory = fileURLToPath(new URL('../', import.meta.url));
   const script = `
     import { SourceTextModule, createContext } from 'node:vm';
     import { readFile } from 'node:fs/promises';
     import { createHash } from 'node:crypto';
+    import { posix } from 'node:path';
     const root = ${JSON.stringify(directory)};
-    const allowed = ['preview.js', 'options.js', 'svg.js', 'social.js', 'fonts.js', 'events.js', 'event-fonts.js', 'event-themes.js'];
+    const allowed = ${JSON.stringify(BROWSER_MODULES.map(([source]) => source))};
     const context = createContext({ URL });
     const modules = new Map();
     for (const name of allowed) modules.set(name, new SourceTextModule(await readFile(root + name, 'utf8'), { context, identifier: name }));
-    const entry = modules.get('preview.js');
-    await entry.link(specifier => {
-      if (!specifier.startsWith('./') || !modules.has(specifier.slice(2))) throw new Error('Non-shared dependency: ' + specifier);
-      return modules.get(specifier.slice(2));
+    const entry = modules.get('shared/preview.js');
+    await entry.link((specifier, referencing) => {
+      const target = posix.normalize(posix.join(posix.dirname(referencing.identifier), specifier));
+      if (!/^\\.{1,2}\\//.test(specifier) || !modules.has(target)) throw new Error('Non-browser dependency: ' + specifier);
+      return modules.get(target);
     });
     await entry.evaluate();
     const results = ${JSON.stringify(layouts)}.map(layout => createHash('sha256').update(entry.namespace.renderPreview({ userName: 'example', name: 'Zoë 李', badges: [] }, 'username=example&layout=' + layout)).digest('hex'));

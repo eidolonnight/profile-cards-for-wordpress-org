@@ -37,8 +37,31 @@ test('all installed locked production dependencies retain their original license
 });
 
 test('all bundled font-family copyright and OFL terms are preserved in public notices', async () => {
-  const notices = normalized(await text('public/FONT-LICENSES.txt'));
-  const licenses = (await readdir(new URL('assets/fonts/', root))).filter(name => /OFL\.txt$/i.test(name));
-  assert.ok(licenses.length > 0);
-  for (const name of licenses) assert.ok(notices.includes(normalized(await text(`assets/fonts/${name}`))), `Missing font notice: ${name}`);
+  const publicNotices = await readFile(new URL('public/FONT-LICENSES.txt', root));
+  assert.equal(createHash('sha256').update(publicNotices).digest('hex'), '2b649e87c065b713d07c0fcd0f643382e8035b71d2ef2d023677863244a58250');
+  const notices = normalized(publicNotices.toString('utf8'));
+  const hashes = {
+    'EBGaramond-OFL.txt': '0985066662eb755ed3683ae5482a81a9195b49ce3f7e165cc2388b3dbece7dd7',
+    'Inter-OFL.txt': '5b9321a4298cfeb6b34354164a1c3afc3db114569984c502b9b35d988fd58c57',
+    'facultyglyphic-OFL.txt': '5a6185c9e0232792afbef890406b569471ceda95e59d1999b602a8047d54be64',
+    'kumbhsans-OFL.txt': 'b7057fc68425720a92830bbd18b39f070d784a4551de7b0b7e1ad3cc6747d3fc',
+    'cardo-OFL.txt': '8e28b778b6e1a7ff9ca72f4dee2d53120aa2856dc1bfd0be44307e365b0e45bb',
+    'OpenSans-OFL.txt': 'fbbbcfef55318de350562559b671360de6d597112ecc5c73881b05092db89602',
+  };
+  const directories = {
+    'assets/fonts/': ['EBGaramond-OFL.txt', 'Inter-OFL.txt'],
+    'events/wordcamp-asia/fonts/': ['facultyglyphic-OFL.txt', 'kumbhsans-OFL.txt'],
+    'events/wordcamp-europe/fonts/': ['cardo-OFL.txt', 'Inter-OFL.txt'],
+    'events/wordcamp-india/fonts/': ['cardo-OFL.txt', 'Inter-OFL.txt'],
+    'events/wordcamp-us/fonts/': ['OpenSans-OFL.txt'],
+  };
+  for (const [directory, expected] of Object.entries(directories)) {
+    const licenses = (await readdir(new URL(directory, root))).filter(name => /OFL\.txt$/i.test(name));
+    assert.deepEqual(licenses.sort(), [...expected].sort(), directory);
+    for (const name of expected) {
+      const original = await readFile(new URL(directory + name, root));
+      assert.equal(createHash('sha256').update(original).digest('hex'), hashes[name], directory + name);
+      assert.ok(notices.includes(normalized(original.toString('utf8'))), `Missing font notice: ${directory}${name}`);
+    }
+  }
 });

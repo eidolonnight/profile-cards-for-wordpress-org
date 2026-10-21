@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, readFile, writeFile, symlink, cp, readdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, posix } from 'node:path';
+import { EVENT_MODULES, BROWSER_MODULES, browserModuleSource } from '../tools/browser-modules.mjs';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
@@ -14,9 +15,9 @@ const run = (home, target, entry = script, releaseRoot = '') => spawnSync(proces
 const source = fileURLToPath(new URL('../', import.meta.url));
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 const stripRevision = text => text.replace(/\?v=[a-f0-9]{64}/g, '');
-const sourcePath = path => path.startsWith('preview/') ? path.replace('preview/', 'shared/')
+const sourcePath = path => path.startsWith('preview/') ? new Map(BROWSER_MODULES.map(([source, target]) => [target, source])).get(path)
   : path === 'create.html' ? 'public/index.html'
-  : path.startsWith('functions/') || path.startsWith('shared/') || ['sf.jsonc', 'LICENSE'].includes(path) ? path : `public/${path}`;
+  : path.startsWith('functions/') || path.startsWith('shared/') || path.startsWith('events/') || ['sf.jsonc', 'LICENSE'].includes(path) ? path : `public/${path}`;
 async function stage(home, name, entry = script) {
   const release = join(home, 'echion/projects/wp-profile-cards/releases', name);
   const root = join(release, 'site'); const result = run(home, root, entry);
@@ -31,7 +32,7 @@ async function snapshot(directory) {
 
 test('stage versions every browser asset edge without changing canonical sources or backend copies', async () => {
   const home = await temp();
-  const before = await Promise.all(['public', 'shared', 'functions'].map(path => snapshot(join(source, path))));
+  const before = await Promise.all(['public', 'shared', 'functions', 'events'].map(path => snapshot(join(source, path))));
   const { root, release, output } = await stage(home, 'cache-edges');
   // Assert the regression directly, before looking for the new metadata file.
   const index = await readFile(join(root, 'index.html'), 'utf8');
@@ -62,19 +63,20 @@ test('stage versions every browser asset edge without changing canonical sources
     const original = await readFile(join(source, sourcePath(item.path)));
     if (item.path.startsWith('preview/')) {
       const text = bytes.toString();
-      for (const match of text.matchAll(/^import\s+[^;]+?\s+from\s+(['"])([^'"]+)\1/gm)) {
+      for (const match of text.matchAll(/^(?:import|export)\s+[^;]+?\s+from\s+(['"])([^'"]+)\1/gm)) {
         imports++;
-        assert.match(match[2], new RegExp(`^\\./[a-z-]+\\.js\\?v=${revision}$`));
-        assert.ok(manifest.some(entry => entry.path === `preview/${match[2].slice(2).split('?')[0]}`));
+        assert.match(match[2], new RegExp(`^\\.{1,2}/[a-z/-]+\\.js\\?v=${revision}$`));
+        assert.ok(manifest.some(entry => entry.path === posix.normalize(posix.join(posix.dirname(item.path), match[2].split('?')[0]))));
       }
-      assert.equal(stripRevision(text), original.toString(), item.path);
+      assert.equal(text, browserModuleSource(item.path, original.toString(), revision), item.path);
     } else if (!['index.html', 'create.html', 'app.js'].includes(item.path)) {
       assert.deepEqual(bytes, original, item.path);
     }
   }
-  assert.equal(imports, 11);
-  assert.deepEqual(await Promise.all(['public', 'shared', 'functions'].map(path => snapshot(join(source, path)))), before);
-  assert.equal(manifest.length, 38);
+  const expectedImports = (await Promise.all(BROWSER_MODULES.map(async ([from]) => [...(await readFile(join(source, from), 'utf8')).matchAll(/^(?:import|export)\s+[^;]+?\s+from\s+(['"])([^'"]+)\1/gm)].length))).reduce((sum, count) => sum + count, 0);
+  assert.equal(imports, expectedImports); assert.ok(imports > 0);
+  assert.deepEqual(await Promise.all(['public', 'shared', 'functions', 'events'].map(path => snapshot(join(source, path)))), before);
+  assert.equal(manifest.length, 36 + EVENT_MODULES.length * 2);
   const stagedPaths = (await readdir(root, { recursive: true, withFileTypes: true }))
     .filter(entry => entry.isFile()).map(entry => join(entry.parentPath, entry.name).slice(root.length + 1)).sort();
   assert.deepEqual(stagedPaths, manifest.map(item => item.path).sort());
@@ -95,7 +97,7 @@ test('stage versions every browser asset edge without changing canonical sources
 test('asset revision is deterministic and changes for canonical content in an isolated fixture', async () => {
   const home = await temp(); const fixture = join(home, 'source');
   await mkdir(join(fixture, 'tools'), { recursive: true });
-  for (const path of ['public', 'shared', 'functions', 'sf.jsonc', 'LICENSE', 'package.json', 'package-lock.json', 'tools/stage.mjs']) {
+  for (const path of ['public', 'shared', 'functions', 'events', 'sf.jsonc', 'LICENSE', 'package.json', 'package-lock.json', 'tools/stage.mjs', 'tools/browser-modules.mjs']) {
     await cp(join(source, path), join(fixture, path), { recursive: true });
   }
   const entry = join(fixture, 'tools/stage.mjs');
@@ -110,7 +112,7 @@ test('asset revision is deterministic and changes for canonical content in an is
   // No timestamps, release names, absolute source paths, or non-allowlisted files enter the key.
   await writeFile(join(fixture, 'unlisted.txt'), 'not a release input');
   assert.equal((await stage(home, 'stable-03', entry)).output.assetRevision, first.output.assetRevision);
-  for (const [index, path] of ['public/styles.css', 'public/favicon.png', 'shared/options.js', 'functions/card.js', 'package.json'].entries()) {
+  for (const [index, path] of ['public/styles.css', 'public/favicon.png', 'shared/options.js', 'functions/card.js', 'package.json', 'events/wordcamp-asia/theme.js', 'events/wordcamp-europe/artwork.js', 'events/wordcamp-india/event.js', 'events/fonts.js'].entries()) {
     const target = join(fixture, path); const original = await readFile(target);
     await writeFile(target, Buffer.concat([original, Buffer.from('\n')]));
     const changed = await stage(home, `changed-0${index}`, entry);
@@ -131,11 +133,12 @@ test('stage has exact manifest hashes, no dependency metadata, and refuses an ex
   const home = await temp(); const release = join(home, 'echion/projects/wp-profile-cards/releases/release-01'); const root = join(release, 'site');
   assert.equal(run(home, root).status, 0);
   const manifest = JSON.parse(await readFile(join(release, 'source-manifest.json')));
-  assert.deepEqual(manifest.map(x => x.path).sort(), ['index.html', 'app.js', 'theme.js', 'background.js', 'styles.css', 'site-logo.png', 'favicon.png', 'site-favicon.ico', 'create.html', 'THIRD-PARTY-NOTICES.txt', 'FONT-LICENSES.txt', 'LICENSE', 'sf.jsonc', 'functions/_fonts.js', 'functions/_profile.js', 'functions/_svg.js', 'functions/json.js', 'functions/card.js', 'functions/_events.js', 'functions/_social.js', 'functions/events.js', 'functions/preview-data.js', 'preview/preview.js', 'preview/options.js', 'preview/svg.js', 'preview/social.js', 'preview/fonts.js', 'preview/events.js', 'preview/event-fonts.js', 'preview/event-themes.js', 'shared/options.js', 'shared/svg.js', 'shared/social.js', 'shared/fonts.js', 'shared/events.js', 'shared/event-fonts.js', 'shared/event-themes.js', 'robots.txt'].sort());
-  assert.equal(manifest.some(x => /package|test|README/.test(x.path)), false);
+  assert.deepEqual(manifest.map(x => x.path).sort(), ['index.html', 'app.js', 'theme.js', 'background.js', 'styles.css', 'site-logo.png', 'favicon.png', 'site-favicon.ico', 'create.html', 'THIRD-PARTY-NOTICES.txt', 'FONT-LICENSES.txt', 'LICENSE', 'sf.jsonc', 'functions/_fonts.js', 'functions/_profile.js', 'functions/_svg.js', 'functions/json.js', 'functions/card.js', 'functions/_events.js', 'functions/_social.js', 'functions/events.js', 'functions/preview-data.js', 'preview/preview.js', 'preview/options.js', 'preview/svg.js', 'preview/social.js', 'preview/fonts.js', 'preview/events.js', 'preview/event-fonts.js', 'preview/event-themes.js', 'shared/options.js', 'shared/svg.js', 'shared/social.js', 'shared/fonts.js', 'shared/events.js', 'robots.txt', ...EVENT_MODULES, ...EVENT_MODULES.map(path => `preview/${path}`)].sort());
+  assert.equal(manifest.some(x => /package|test|README|manifest|provenance|\.(woff2|ttf)$/.test(x.path)), false);
   for (const item of manifest) assert.equal(createHash('sha256').update(await readFile(join(root, item.path))).digest('hex'), item.sha256);
-  for (const name of ['options.js', 'svg.js', 'social.js', 'fonts.js', 'events.js', 'event-fonts.js', 'event-themes.js']) {
-    assert.equal(stripRevision(await readFile(join(root, 'preview', name), 'utf8')), await readFile(join(root, 'shared', name), 'utf8'), name);
+  for (const name of ['options.js', 'svg.js', 'social.js', 'fonts.js', 'events.js']) {
+    const revision = JSON.parse(await readFile(join(release, 'asset-revision.json'))).revision;
+    assert.equal(await readFile(join(root, 'preview', name), 'utf8'), browserModuleSource(`preview/${name}`, await readFile(join(root, 'shared', name), 'utf8'), revision), name);
   }
   await writeFile(join(release, 'sentinel'), 'keep'); assert.notEqual(run(home, root).status, 0); assert.equal(await readFile(join(release, 'sentinel'), 'utf8'), 'keep');
   assert.notEqual(run(home, home).status, 0); assert.notEqual(run(home, join(release, 'nested/site')).status, 0);
@@ -184,13 +187,13 @@ test('local adapter serves exactly the shared allowlist and preview-data route w
       child.stdout.once('data', () => { clearTimeout(timer); resolve(); });
     });
     const origin = `http://127.0.0.1:${port}`;
-    for (const name of ['preview.js', 'options.js', 'svg.js', 'social.js', 'fonts.js', 'events.js', 'event-fonts.js', 'event-themes.js']) {
-      const response = await fetch(`${origin}/preview/${name}`);
+    for (const [source, name] of BROWSER_MODULES) {
+      const response = await fetch(`${origin}/${name}`);
       assert.equal(response.status, 200); assert.match(response.headers.get('Content-Type'), /^text\/javascript/);
       assert.equal(response.headers.get('X-Content-Type-Options'), 'nosniff');
       assert.equal(response.headers.get('Cache-Control'), 'no-store');
-      assert.ok(await response.text() === await readFile(new URL(`../shared/${name}`, import.meta.url), 'utf8'), name);
-      const head = await fetch(`${origin}/preview/${name}`, { method: 'HEAD' }); assert.equal(head.status, 200); assert.equal(await head.text(), '');
+      assert.equal(await response.text(), browserModuleSource(name, await readFile(new URL(`../${source}`, import.meta.url), 'utf8')), name);
+      const head = await fetch(`${origin}/${name}`, { method: 'HEAD' }); assert.equal(head.status, 200); assert.equal(await head.text(), '');
     }
     const backgroundResponse = await fetch(`${origin}/background.js`);
     assert.equal(backgroundResponse.status, 200);
@@ -213,7 +216,7 @@ test('local adapter serves exactly the shared allowlist and preview-data route w
     assert.equal(await licenseResponse.text(), await readFile(new URL('../LICENSE', import.meta.url), 'utf8'));
     const licenseHead = await fetch(`${origin}/LICENSE`, { method: 'HEAD' });
     assert.equal(licenseHead.status, 200); assert.equal(await licenseHead.text(), '');
-    for (const path of ['/AGENTS.md', '/CLAUDE.md', '/docs/event-themes.md', '/.gitignore', '/.env', '/functions/_profile.js', '/functions/preview-data.js', '/package.json', '/shared/options.js', '/shared/fonts.js']) assert.equal((await fetch(origin + path)).status, 404, path);
+    for (const path of ['/AGENTS.md', '/CLAUDE.md', '/docs/event-themes.md', '/.gitignore', '/.env', '/functions/_profile.js', '/functions/preview-data.js', '/package.json', '/shared/options.js', '/shared/fonts.js', '/events/README.md', '/events/fonts.js', '/events/wordcamp-asia/theme.js', '/preview/events/README.md', '/preview/events/wordcamp-asia/fonts/manifest.json', '/preview/events/wordcamp-asia/fonts/Faculty-Glyphic-400.woff2', '/preview/events/wordcamp-asia/README.md']) assert.equal((await fetch(origin + path)).status, 404, path);
     const invalid = await fetch(`${origin}/preview-data?size=0`); assert.equal(invalid.status, 400); assert.equal((await invalid.json()).error.code, 'invalid_username');
     assert.equal((await fetch(`${origin}/preview-data?username=example&size=0`, { method: 'POST' })).status, 405);
   } finally { child.kill(); await exited; }

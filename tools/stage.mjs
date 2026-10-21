@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { resolve, dirname, basename, join, isAbsolute, relative, sep, parse } from 'node:path';
 import { homedir } from 'node:os';
+import { EVENT_MODULES, BROWSER_MODULES, browserModuleSource } from './browser-modules.mjs';
 // Build a new immutable allowlist. Never replace existing release directories or follow symlinks.
 const source = resolve(fileURLToPath(new URL('../', import.meta.url)));
 const home = resolve(process.env.HOME || homedir());
@@ -25,8 +26,9 @@ const entries = [
   ['functions/preview-data.js', 'functions/preview-data.js'],
   // Functions compilation consumes its imports. Distinct public copies survive
   // that removal while both copies still come from one canonical source.
-  ...['options.js', 'svg.js', 'social.js', 'fonts.js', 'events.js', 'event-themes.js', 'event-fonts.js'].map(name => [`shared/${name}`, `shared/${name}`]),
-  ...['preview.js', 'options.js', 'svg.js', 'social.js', 'fonts.js', 'events.js', 'event-themes.js', 'event-fonts.js'].map(name => [`shared/${name}`, `preview/${name}`])
+  ...['options.js', 'svg.js', 'social.js', 'fonts.js', 'events.js'].map(name => [`shared/${name}`, `shared/${name}`]),
+  ...EVENT_MODULES.map(path => [path, path]),
+  ...BROWSER_MODULES
 ];
 await mkdir(base, { recursive: true, mode: 0o700 });
 if (await realpath(base) !== base || await realpath(source) !== source) throw new Error('Symlinked release/source parents are not allowed.');
@@ -57,8 +59,7 @@ function browserBytes(to, bytes) {
       (_, quote, path) => `${quote}${path}?v=${revision}${quote}`));
   }
   if (to.startsWith('preview/')) {
-    return Buffer.from(bytes.toString('utf8').replace(/(^import\s+[^;]+?\s+from\s+)(['"])(\.\/[a-z-]+\.js)\2/gm,
-      (_, prefix, quote, path) => `${prefix}${quote}${path}?v=${revision}${quote}`));
+    return Buffer.from(browserModuleSource(to, bytes.toString('utf8'), revision));
   }
   return bytes;
 }

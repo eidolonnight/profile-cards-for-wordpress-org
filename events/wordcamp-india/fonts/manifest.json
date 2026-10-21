@@ -1,0 +1,33 @@
+{
+  "editions": {
+    "india-2027": [
+      "cardo-700",
+      "inter-400",
+      "inter-600"
+    ]
+  },
+  "assets": [
+    {
+      "path": "Cardo-700.woff2",
+      "source": "https://europe.wordcamp.org/2027/wp-content/themes/twentytwentyfour/assets/fonts/cardo/cardo_normal_700.woff2",
+      "sha256": "bca42f8b5a5283b975115421b3b4171cf89b88bf39ef52538c9494860414c292",
+      "bytes": 132564,
+      "family": "Cardo",
+      "weights": [
+        700
+      ]
+    },
+    {
+      "path": "Inter-latin.woff2",
+      "source": "https://profiles.wordpress.org/wp-content/mu-plugins/pub-sync/global-fonts/Inter/Inter-latin.woff2",
+      "sha256": "fc4951f0824bd067d107592ae2dc5f1309da1ad69a90c13a7158d7fcb99dc805",
+      "bytes": 77524,
+      "family": "Inter",
+      "weights": [
+        400,
+        600
+      ],
+      "note": "Reuse existing licensed WordPress.org Inter Latin; same family/weights as Europe and India computed styles, not the larger theme binary."
+    }
+  ]
+}

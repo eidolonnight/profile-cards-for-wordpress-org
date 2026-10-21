@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { EVENT_MODULES } from '../tools/browser-modules.mjs';
 
 const source = fileURLToPath(new URL('../', import.meta.url));
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -15,7 +16,7 @@ async function fixture(t) {
   const project = join(base, 'project');
   const temporary = join(base, 'temporary');
   await mkdir(project); await mkdir(temporary); await mkdir(join(project, 'tools'));
-  for (const path of ['public', 'shared', 'functions', 'LICENSE', 'sf.jsonc', 'package.json', 'package-lock.json', 'tools/stage.mjs']) {
+  for (const path of ['public', 'shared', 'functions', 'events', 'LICENSE', 'sf.jsonc', 'package.json', 'package-lock.json', 'tools/stage.mjs', 'tools/browser-modules.mjs']) {
     await cp(join(source, path), join(project, path), { recursive: true });
   }
   try { await cp(join(source, 'tools/build.mjs'), join(project, 'tools/build.mjs')); }
@@ -50,7 +51,7 @@ test('repository build matches immutable staging exactly and excludes source-onl
   const before = await inventory(project);
   const result = run(); assert.ifError(result.error); assert.equal(result.status, 0, result.stderr);
   const output = JSON.parse(result.stdout);
-  assert.equal(output.outputDirectory, 'dist'); assert.equal(output.files, 38);
+  assert.equal(output.outputDirectory, 'dist'); assert.equal(output.files, 36 + EVENT_MODULES.length * 2);
   assert.match(output.assetRevision, /^[a-f0-9]{64}$/);
   const releases = join(base, 'comparison'); const release = join(releases, 'release-01');
   const staged = spawnSync(process.execPath, [join(project, 'tools/stage.mjs'), join(release, 'site')], {

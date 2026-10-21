@@ -1,12 +1,12 @@
 # Contributor and agent instructions
 
-These instructions apply to this project, whether checked out alone or inside a larger repository. Read [README.md](README.md) for the public interface and [docs/event-themes.md](docs/event-themes.md) before changing WordCamp facts, colors, typography, or editions.
+These instructions apply to this project, whether checked out alone or inside a larger repository. [README.md](README.md) is the short human entry point. Read the [technical reference](docs/technical-reference.md) for interface/hosting details and the [event guide](events/README.md) before changing WordCamp facts, colors, typography, or editions.
 
 ## Purpose and boundaries
 
 - This is an independent public WordPress.org profile-card builder, **not an official WordPress service**, plugin, authentication service, or attendance registry.
 - WordCamp participation is self-reported. Never imply that a role proves registration, selection, sponsorship, or endorsement.
-- Project-owned code is GPL-2.0-or-later. Preserve the project license and attribution; third-party fonts and dependencies retain their own licenses. Font binaries are SIL OFL 1.1; do not relabel them GPL. Retain [font licenses](public/FONT-LICENSES.txt), [third-party notices](public/THIRD-PARTY-NOTICES.txt), and original notices in `assets/fonts/`.
+- Project-owned code is GPL-2.0-or-later. Preserve the project license and attribution; third-party fonts and dependencies retain their own licenses. Font binaries are SIL OFL 1.1; do not relabel them GPL. Retain [font licenses](public/FONT-LICENSES.txt), [third-party notices](public/THIRD-PARTY-NOTICES.txt), and original notices in `assets/fonts/` and `events/wordcamp-*/fonts/`.
 - Keep changes scoped to the request. Do not silently refresh event facts/styles during unrelated maintenance. Do not copy official logos or artwork merely because they are publicly accessible.
 - Local edits/tests are not approval to publish. Obtain explicit approval before push, remote changes, publication, promotion, access/permission or ownership changes, domains/DNS, or paid resources. Never create a replacement hosting target by default.
 - Do not commit credentials, browser storage state, private release receipts, downloaded personal-data evidence, installed dependencies, or build/release directories. Keep evidence outside the repository and publish root.
@@ -20,20 +20,23 @@ These instructions apply to this project, whether checked out alone or inside a 
 | `public/background.js` | Browser-only image validation, crop/tint and SVG compositing |
 | `shared/options.js` | Canonical query validation, compatible defaults and `ProfileError` |
 | `shared/svg.js` | Classic, Landscape (`profile`) and Vertical (`square`) SVG rendering |
-| `shared/social.js` | WordCamp avatar/announcement rendering and geometry |
-| `shared/events.js`, `event-themes.js` | Curated edition/role catalog and lightweight color/style tokens |
+| `events/wordcamp-*/{event.js,theme.js,artwork.js,fonts/}` | One folder per event, not per year: edition metadata, theme choices, SVG artwork and licensed font inputs |
+| `events/social.js` | Shared WordCamp avatar/announcement rendering and geometry |
+| `events/catalog.js`, `themes.js`, `artwork.js` | Curated catalog/roles and explicit theme/artwork registries |
 | `shared/preview.js` | Pure browser-safe renderer entry using the same options/renderers as `/card` |
-| `shared/fonts.js`, `event-fonts.js` | Generated embedded font CSS, hashes and metrics |
+| `shared/fonts.js`, `events/fonts.js` | Generated embedded font CSS, hashes and metrics |
 | `functions/_profile.js` | Bounded public-profile/avatar fetching, parsing, safe URLs and transient caches |
 | `functions/{json,card,events,preview-data}.js` | Production `GET` handlers |
-| `tools/serve.mjs`, `stage.mjs` | Loopback adapter and immutable allowlist staging |
+| `tools/serve.mjs`, `stage.mjs`, `browser-modules.mjs` | Loopback adapter, immutable allowlist staging and explicit browser module aliases |
 | `sf.jsonc` | Hosting configuration; no application database |
 
-`functions/_svg.js`, `_fonts.js`, `_events.js`, and `_social.js` re-export canonical `shared/` code; `_profile.js` also re-exports shared options. Do not introduce a second renderer or validation implementation. Production handlers must remain compatible with the Functions runtime, not depend on native Node APIs used by development tools.
+`functions/_svg.js`, `_fonts.js`, `_events.js`, and `_social.js` re-export canonical code; `_profile.js` also re-exports shared options. `shared/events.js`, `event-themes.js`, `event-fonts.js` and `social.js` are compatibility re-exports into `events/`. Edit the event-owned sources, not those wrappers. Do not introduce a second renderer or validation implementation. Production handlers must remain compatible with the Functions runtime, not depend on native Node APIs used by development tools.
 
 Data flow: the builder reads `/json`, then `/preview-data?username=<slug>&size=0|320|1024` for a validated profile/photo snapshot. Warm option changes render locally from `shared/preview.js`; `/card` renders the same inputs on the server. `/events` returns curated metadata, not a live event-site scrape. Browser-only backgrounds are intentionally absent from server output.
 
-Local development serves canonical shared modules at `/preview/*.js`. Staging creates separate backend `shared/` and public `preview/` copies because Functions compilation consumes backend imports. It derives a deterministic asset revision and rewrites staged browser URL specifiers only. Do not edit staged copies, `?v=` revisions, manifests, or generated font modules manually.
+Local development serves canonical shared/event modules through the explicit aliases in `tools/browser-modules.mjs`. Existing `/preview/*.js` entry paths remain supported, with event dependencies at `/preview/events/`. Staging creates separate backend `shared/` and `events/` copies and public `preview/` copies because Functions compilation consumes backend imports. Both local delivery and staging rewrite relative import/re-export URL specifiers to public aliases; staging also applies one deterministic asset revision. Backend source bytes stay unchanged. Do not edit staged copies, `?v=` revisions, manifests, or generated font modules manually. Source binaries, font manifests, documentation and evidence are not runtime assets.
+
+Keep README.md short and human-facing: purpose, organizer theme updates, agent-assisted PR contributions and license/credits. Put setup, tests, routes, formats and hosting mechanics in this file, the event guide or the technical reference. Organizers should find an event's editable material in one year-free folder; new editions extend that folder's records rather than creating year directories.
 
 ## Local setup and checks
 

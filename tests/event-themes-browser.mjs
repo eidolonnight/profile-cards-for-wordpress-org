@@ -9,6 +9,8 @@ import { EVENTS, ROLES } from '../shared/events.js';
 import { EVENT_FONTS, EVENT_FONT_STYLE_HASH } from '../shared/event-fonts.js';
 import { queryOptions } from '../shared/options.js';
 import { renderSocial } from '../shared/social.js';
+import { BROWSER_MODULES, browserModuleSource } from '../tools/browser-modules.mjs';
+const modules = new Map(BROWSER_MODULES.map(([source, path]) => [`/${path}`, source]));
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const evidence = process.env.EVIDENCE_DIR;
 if (!evidence) throw new Error('External EVIDENCE_DIR required');
@@ -29,9 +31,10 @@ const server = createServer(async (req, res) => {
     }
     if (url.pathname === '/') { res.end('<!doctype html><title>Offline branding test</title>'); return; }
     if (url.pathname === '/favicon.ico') { res.writeHead(204).end(); return; }
-    const modules = new Set(['social','events','options','fonts','svg','event-themes','event-fonts']);
-    const match = url.pathname.match(/^\/shared\/(.+)\.js$/);
-    if (match && modules.has(match[1])) { res.setHeader('Content-Type', 'text/javascript'); res.end(await readFile(new URL(`../shared/${match[1]}.js`, import.meta.url))); return; }
+    if (modules.has(url.pathname)) {
+      res.setHeader('Content-Type', 'text/javascript');
+      res.end(browserModuleSource(url.pathname.slice(1), await readFile(new URL(`../${modules.get(url.pathname)}`, import.meta.url), 'utf8'))); return;
+    }
     if (url.pathname === '/background.js') { res.setHeader('Content-Type', 'text/javascript'); res.end(await readFile(new URL('../public/background.js', import.meta.url))); return; }
     res.writeHead(404).end();
   } catch (e) { res.writeHead(500).end(e.message); }
@@ -118,8 +121,8 @@ try {
     // Canonical module comparison uses the parsed profile fixture, no real users.
     await page.goto(origin);
     const result = await page.evaluate(async ({ source, event, layout, role }) => {
-      const { renderSocial } = await import('/shared/social.js');
-      const { queryOptions } = await import('/shared/options.js');
+      const { renderSocial } = await import('/preview/social.js');
+      const { queryOptions } = await import('/preview/options.js');
       const { applyBackground } = await import('/background.js');
       const options = queryOptions(new Request(location.origin + '/card?' + new URLSearchParams({ username: 'branding-fixture', layout, event, role, avatar: 'true' })));
       const canonical = renderSocial({ name: 'Ada Example', userName: 'branding-fixture' }, options);

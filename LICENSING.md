@@ -58,7 +58,7 @@ must not be lost when a package appears more than once in the dependency tree.
 
 The font software remains under the SIL Open Font License 1.1 (`OFL-1.1`),
 not the project's GPL. Original font licenses and copyright notices are in
-`assets/fonts/` and reproduced in [public/FONT-LICENSES.txt](public/FONT-LICENSES.txt).
+`assets/fonts/` and each `events/wordcamp-*/fonts/` directory, and reproduced in [public/FONT-LICENSES.txt](public/FONT-LICENSES.txt).
 The OFL permits bundling fonts alongside other open-source software; retain its
 terms, copyright notices and any reserved-font-name restrictions. See the
 [OFL FAQ](https://openfontlicense.org/ofl-faq/), especially its bundling and embedding guidance.
@@ -66,16 +66,16 @@ terms, copyright notices and any reserved-font-name restrictions. See the
 | Font family | Original copyright/license file | Binary provenance |
 | --- | --- | --- |
 | EB Garamond | [EBGaramond-OFL.txt](assets/fonts/EBGaramond-OFL.txt) | [Profile fonts](assets/fonts/provenance.json) |
-| Inter | [Inter-OFL.txt](assets/fonts/Inter-OFL.txt) | [Profile fonts](assets/fonts/provenance.json) and [event fonts](assets/fonts/event-provenance.json) |
-| Faculty Glyphic | [facultyglyphic-OFL.txt](assets/fonts/facultyglyphic-OFL.txt) | [Event fonts](assets/fonts/event-provenance.json) |
-| Kumbh Sans | [kumbhsans-OFL.txt](assets/fonts/kumbhsans-OFL.txt) | [Event fonts](assets/fonts/event-provenance.json) |
-| Cardo | [cardo-OFL.txt](assets/fonts/cardo-OFL.txt) | [Event fonts](assets/fonts/event-provenance.json) |
-| Open Sans | [OpenSans-OFL.txt](assets/fonts/OpenSans-OFL.txt) | [Event fonts](assets/fonts/event-provenance.json), including original TTFs and WOFF2 conversion details |
+| Inter | [Base notice](assets/fonts/Inter-OFL.txt), [Europe](events/wordcamp-europe/fonts/Inter-OFL.txt), [India](events/wordcamp-india/fonts/Inter-OFL.txt) | [Profile fonts](assets/fonts/provenance.json), [Europe](events/wordcamp-europe/fonts/manifest.json), [India](events/wordcamp-india/fonts/manifest.json) |
+| Faculty Glyphic | [facultyglyphic-OFL.txt](events/wordcamp-asia/fonts/facultyglyphic-OFL.txt) | [Asia fonts](events/wordcamp-asia/fonts/manifest.json) |
+| Kumbh Sans | [kumbhsans-OFL.txt](events/wordcamp-asia/fonts/kumbhsans-OFL.txt) | [Asia fonts](events/wordcamp-asia/fonts/manifest.json) |
+| Cardo | [Europe](events/wordcamp-europe/fonts/cardo-OFL.txt), [India](events/wordcamp-india/fonts/cardo-OFL.txt) | [Europe](events/wordcamp-europe/fonts/manifest.json), [India](events/wordcamp-india/fonts/manifest.json) |
+| Open Sans | [OpenSans-OFL.txt](events/wordcamp-us/fonts/OpenSans-OFL.txt) | [US fonts](events/wordcamp-us/fonts/manifest.json), including original TTFs and WOFF2 conversion details |
 
-Font binaries embedded as data URLs in `shared/fonts.js` and `shared/event-fonts.js`
+Font binaries embedded as data URLs in `shared/fonts.js` and `events/fonts.js`
 retain the OFL. The surrounding project-authored JavaScript is GPL-2.0-or-later.
 Do not relabel the embedded fonts as GPL or remove their notices when distributing
-compiled assets. Follow [the event-theme guide](docs/event-themes.md) when changing
+compiled assets. Follow [the event-theme guide](events/README.md) when changing
 fonts, their metrics or their provenance.
 
 ## Wapuu branding artwork
