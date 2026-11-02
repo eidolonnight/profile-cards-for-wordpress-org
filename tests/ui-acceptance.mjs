@@ -85,8 +85,14 @@ export async function assertInitialDemo(page) {
   const actions = ['download-png', 'download-svg'];
   await assertDownloadOnlyActions(page);
   assert.deepEqual(await page.locator('#layout option:not([hidden])').evaluateAll(nodes => nodes.map(node => [node.value, node.textContent])), [
-    ['profile', 'Landscape banner'], ['square', 'Vertical card'], ['avatar', 'WordCamp avatar frame'], ['announcement', 'WordCamp social card'],
+    ['announcement', 'WordCamp social card'], ['avatar', 'WordCamp avatar frame'], ['square', 'Vertical card'], ['profile', 'Landscape banner'],
   ]);
+  assert.equal(await page.locator('#layout').inputValue(), 'announcement');
+  assert.deepEqual(await page.locator('.section-heading .step').allTextContents(), ['00', '01']);
+  for (const id of ['avatar', 'name']) {
+    assert.equal(await page.locator('#' + id).isChecked(), true, `${id} required default`);
+    assert.equal(await page.locator('#' + id).isDisabled(), true, `${id} required control`);
+  }
   assert.equal(await page.locator('#layout option[value="classic"][hidden]').count(), 1, 'legacy classic remains available to restored URLs, not the visible menu');
   assert.equal(await page.locator('#copy-png, #dimension-note, #export-note').count(), 0);
   assert.deepEqual(await page.locator('#exports button').evaluateAll(nodes => nodes.map(node => node.id)), actions);

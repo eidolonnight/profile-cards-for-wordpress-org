@@ -27,14 +27,14 @@
     <noscript><p class="notice">JavaScript is needed to build and download a card. Your public profile is still available at <a href="https://profiles.wordpress.org/">profiles.wordpress.org</a>.</p></noscript>
     <div class="builder" id="builder">
       <section class="controls" aria-labelledby="build-title">
-        <div class="section-heading"><span class="step" aria-hidden="true">01</span><h2 id="build-title">Make your card</h2></div>
+        <div class="section-heading"><span class="step" aria-hidden="true">00</span><h2 id="build-title">Make your card</h2></div>
         <form id="profile-form">
           <label for="username">WordPress.org username</label>
           <p class="field-help" id="username-help">Use your profile’s lowercase username, not your display name or its full URL.</p>
           <div class="profile-entry"><input id="username" name="username" type="text" required maxlength="60" pattern="[a-z0-9][a-z0-9._\-]*" placeholder="Your WordPress.org Username" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="username-help"><button class="button primary" type="submit" id="create-button">Create card <span aria-hidden="true">↗</span></button></div>
           <p class="field-help">Profile data may be cached for up to 15 minutes.</p>
         </form>
-        <div class="layout-setting"><label for="layout">What would you like to make?</label><select id="layout" aria-describedby="layout-help"><option value="profile" selected>Landscape banner</option><option value="square">Vertical card</option><option value="avatar">WordCamp avatar frame</option><option value="announcement">WordCamp social card</option><option value="classic" hidden>Legacy card</option></select><p id="layout-help" class="field-help">Choose a banner, profile card, circular avatar frame, or 4:5 WordCamp social card.</p></div>
+        <div class="layout-setting"><label for="layout">What would you like to make?</label><select id="layout" aria-describedby="layout-help"><option value="announcement" selected>WordCamp social card</option><option value="avatar">WordCamp avatar frame</option><option value="square">Vertical card</option><option value="profile">Landscape banner</option><option value="classic" hidden>Legacy card</option></select><p id="layout-help" class="field-help">Choose a 4:5 WordCamp social card, circular avatar frame, vertical profile card, or landscape banner.</p></div>
         <section id="event-settings" class="event-settings" aria-labelledby="event-heading" hidden>
           <fieldset id="event-controls" disabled>
             <legend id="event-heading">Your WordCamp</legend>
@@ -55,7 +55,7 @@
             <div class="profile-content-options">
               <label class="check-label" for="avatar"><input type="checkbox" id="avatar" checked> <span id="avatar-label">Avatar</span></label>
               <div id="profile-fields" class="profile-detail-controls">
-                <label class="check-label" for="name"><input type="checkbox" id="name" checked> Name</label>
+                <label class="check-label" for="name"><input type="checkbox" id="name" checked> <span id="name-label">Name</span></label>
                 <label class="check-label" for="handle"><input type="checkbox" id="handle" checked> Username</label>
                 <label class="check-label" for="jobTitle"><input type="checkbox" id="jobTitle" checked> Job title</label>
                 <label class="check-label" for="organization"><input type="checkbox" id="organization" checked> Organization</label>
@@ -110,7 +110,7 @@
         </div>
       </section>
       <section class="result" aria-labelledby="preview-title">
-        <div class="section-heading"><span class="step" aria-hidden="true">02</span><h2 id="preview-title">Take it with you</h2><span class="preview-label">Live preview</span></div>
+        <div class="section-heading"><span class="step" aria-hidden="true">01</span><h2 id="preview-title">Take it with you</h2><span class="preview-label">Live preview</span></div>
         <div id="preview-stage" class="preview-stage" aria-busy="false">
           <div id="empty-state" class="empty-state"><span class="empty-symbol" aria-hidden="true">＋</span><h3 id="empty-title">A small card. Your story.</h3><p id="empty-description">Enter a username to see your real profile here.</p></div>
           <img id="card-preview" alt="" hidden>

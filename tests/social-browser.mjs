@@ -123,22 +123,23 @@ try {
   await writeFile(evidence + '/matrix.json', JSON.stringify(report.matrix, null, 2) + '\n');
   check('every event × role × format × light/dark combination uses live profile data, correct text and dimensions');
 
-  for (const id of ['name', 'handle', 'avatar', 'eventDetails']) {
+  assert.equal(await page.locator('#avatar').isChecked(), true); assert.equal(await page.locator('#avatar').isDisabled(), true);
+  assert.equal(await page.locator('#name').isChecked(), true); assert.equal(await page.locator('#name').isDisabled(), true);
+  for (const id of ['handle', 'eventDetails']) {
     await page.locator('#' + id).uncheck(); const svg = await preview(); assert.equal(doc(svg).querySelector(`[data-field="${id}"]`), null, id);
-    if (id === 'name') assert.ok(!svg.includes(profile.name));
     if (id === 'handle') assert.ok(!svg.includes('@' + profile.userName));
     await page.locator('#' + id).check(); await ready();
   }
-  await page.locator('#name').uncheck(); await page.locator('#eventDetails').uncheck(); await page.locator('#event').selectOption('india-2027'); await page.locator('#role').selectOption('volunteer'); await ready();
+  await page.locator('#handle').uncheck(); await page.locator('#eventDetails').uncheck(); await page.locator('#event').selectOption('india-2027'); await page.locator('#role').selectOption('volunteer'); await ready();
   const beforeRestore = await preview();
   const builder = new URL(await cardURLFromControls(page)); builder.pathname = '/create'; const params = builder.searchParams;
-  assert.equal(params.get('event'), 'india-2027'); assert.equal(params.get('role'), 'volunteer'); assert.equal(params.get('name'), 'false'); assert.equal(params.get('eventDetails'), 'false');
+  assert.equal(params.get('event'), 'india-2027'); assert.equal(params.get('role'), 'volunteer'); assert.equal(params.get('avatar'), 'true'); assert.equal(params.get('name'), 'true'); assert.equal(params.get('handle'), 'false'); assert.equal(params.get('eventDetails'), 'false');
   for (const key of ['refresh', 'header', 'badges', 'link', 'userId', 'teams', 'omitTeams', 'jobTitle', 'organization', 'location', 'joined', 'badgeLabelColor']) assert.equal(params.has(key), false, key);
   await page.goto(builder.href); await page.locator('#create-button').click(); const restored = await preview();
   assert.equal(await page.locator('#event').inputValue(), 'india-2027'); assert.equal(await page.locator('#role').inputValue(), 'volunteer');
-  assert.equal(doc(restored).querySelector('[data-field="name"]'), null); assert.equal(doc(restored).querySelector('[data-field="eventDetails"]'), null);
+  assert.ok(doc(restored).querySelector('[data-field="avatar"]')); assert.ok(doc(restored).querySelector('[data-field="name"]')); assert.equal(doc(restored).querySelector('[data-field="handle"]'), null); assert.equal(doc(restored).querySelector('[data-field="eventDetails"]'), null);
   assert.equal(createHash('sha256').update(restored).digest('hex'), createHash('sha256').update(beforeRestore).digest('hex'), 'restored event, role, colors and omissions must reproduce the same SVG');
-  check('announcement omissions and event/role/color settings survive explicit builder URLs without irrelevant parameters');
+  check('required announcement identity and optional username/event details survive explicit builder URLs without irrelevant parameters');
 
   await page.locator('#layout').selectOption('avatar'); await ready(); await page.locator('#avatar').uncheck(); const frame = await preview();
   assert.equal(doc(frame).querySelector('[data-field="avatar"]'), null); await pngExport('avatar-overlay', 'avatar', true);
@@ -152,13 +153,15 @@ try {
   assert.equal(await page.locator('#badges').isChecked(), true);
   await page.locator('#link').check(); assert.ok(doc(await preview()).querySelector('a'));
   await page.locator('#layout').selectOption('avatar'); await ready(); assert.equal(await page.locator('#avatar').isChecked(), false);
-  await page.locator('#layout').selectOption('announcement'); await ready(); assert.equal(await page.locator('#name').isChecked(), false); assert.equal(await page.locator('#eventDetails').isChecked(), false);
+  await page.locator('#layout').selectOption('announcement'); await ready(); assert.equal(await page.locator('#name').isChecked(), true); assert.equal(await page.locator('#name').isDisabled(), true); assert.equal(await page.locator('#eventDetails').isChecked(), false);
   await page.locator('#layout').selectOption('square'); await ready(); assert.equal(await page.locator('#badges').isChecked(), false);
   assert.equal(await page.locator('#link').isChecked(), true); assert.equal(await page.locator('#avatar').isChecked(), true);
   check('transparent frame-only export and independent visibility choices survive all five layouts');
 
   for (const layout of ['avatar', 'announcement']) {
-    await page.locator('#layout').selectOption(layout); await page.locator('#avatar').check(); if (layout === 'announcement') { await page.locator('#name').check(); await page.locator('#eventDetails').check(); }
+    await page.locator('#layout').selectOption(layout);
+    if (layout === 'avatar') await page.locator('#avatar').check();
+    else { assert.equal(await page.locator('#avatar').isChecked(), true); assert.equal(await page.locator('#avatar').isDisabled(), true); await page.locator('#eventDetails').check(); }
     await page.locator('#event').selectOption('europe-2027'); await page.locator('#role').selectOption('attendee'); await selectPalette(page, 'light'); await ready();
     for (const width of [1440, 1024, 768, 390, 320]) {
       await page.setViewportSize({ width, height: 950 }); await noOverflow();

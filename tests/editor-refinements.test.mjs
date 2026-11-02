@@ -120,14 +120,32 @@ test('classic and WordCamp retain their own controls without modern-only options
       assert.ok(e.$(id).closest('[hidden]'));
       assert.equal(e.parameters('fixture').has(id), false);
     }
-    assert.equal(e.$('avatar').disabled || false, false);
+    assert.equal(e.$('avatar').disabled || false, layout === 'announcement');
     assert.equal(e.$('badges').disabled, layout !== 'classic');
-    assert.equal(e.$('name').disabled, layout !== 'announcement');
+    assert.equal(e.$('name').disabled, true);
+    assert.equal(e.$('handle').disabled, layout !== 'announcement');
     assert.equal(e.$('event-settings').hidden, layout === 'classic');
     for (const id of layout === 'classic' ? ['avatar', 'badges', 'link'] : layout === 'avatar' ? ['avatar'] : ['avatar', 'name', 'handle', 'eventDetails']) {
       assert.equal(e.$(id).checked, true, `${layout}/${id} fresh`);
     }
   }
+});
+
+test('WordCamp social cards require avatar and name while keeping username optional', async () => {
+  const e = editor('?layout=announcement&avatar=false&name=false&handle=false');
+  await e.loadEvents();
+  assert.equal(e.state.restoreInvalid, true);
+  for (const id of ['avatar', 'name']) {
+    assert.equal(e.$(id).checked, true, id);
+    assert.equal(e.$(id).disabled, true, id);
+    assert.equal(e.parameters('fixture').get(id), 'true', id);
+  }
+  assert.equal(e.$('handle').checked, false);
+  assert.equal(e.$('handle').disabled, false);
+  assert.equal(e.parameters('fixture').get('handle'), 'false');
+  assert.match(e.$('public-fields-help').textContent, /avatar and name are required/i);
+  assert.match(e.$('avatar-label').textContent, /required/i);
+  assert.match(e.$('name-label').textContent, /required/i);
 });
 
 test('malformed and duplicate new toggle parameters still fail validation', () => {
@@ -273,15 +291,17 @@ test('appearance tolerates denied storage, invalid saved values and cross-tab ch
 
 test('explicit URL false survives returning to a layout while new layouts default checked', async () => {
   for (const initial of ['profile', 'square', 'classic', 'avatar', 'announcement']) {
-    const applicable = initial === 'avatar' ? ['avatar'] : initial === 'announcement' ? ['avatar', 'name', 'handle', 'eventDetails'] : initial === 'classic' ? ['avatar', 'badges', 'link'] : modernIds;
+    const applicable = initial === 'avatar' ? ['avatar'] : initial === 'announcement' ? ['handle', 'eventDetails'] : initial === 'classic' ? ['avatar', 'badges', 'link'] : modernIds;
     const e = editor(`?layout=${initial}&${applicable.map(id => `${id}=false`).join('&')}`);
     if (['avatar', 'announcement'].includes(initial)) await e.loadEvents();
     for (const id of applicable) assert.equal(e.$(id).checked, false);
+    if (initial === 'announcement') for (const id of ['avatar', 'name']) assert.equal(e.$(id).checked, true, `${initial}/${id} required`);
     const next = initial === 'profile' ? 'square' : 'profile';
     e.change('layout', next);
     for (const id of modernIds) assert.equal(e.$(id).checked, true, `${initial} to ${next}/${id}`);
     e.change('layout', initial);
     for (const id of applicable) assert.equal(e.$(id).checked, false, `${initial}/${id}`);
+    if (initial === 'announcement') for (const id of ['avatar', 'name']) assert.equal(e.$(id).checked, true, `${initial}/${id} required on return`);
     const fresh = editor('?layout=profile');
     fresh.change('layout', initial);
     if (['avatar', 'announcement'].includes(initial)) await fresh.loadEvents();

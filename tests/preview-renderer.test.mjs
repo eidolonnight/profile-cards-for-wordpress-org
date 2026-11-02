@@ -51,14 +51,15 @@ for (const [index, layout] of layouts.entries()) test(`preview is byte-identical
       assert.equal(avatar.status, photo ? 'embedded' : 'initials');
       assert.equal(new URL(photoCalls[0]).searchParams.get('s'), String(size));
       for (const [variantIndex, variant] of variants.entries()) {
-        const query = new URLSearchParams({ username, layout, ...variant, ...(social && variantIndex % 2 ? { event: 'europe-2027', role: 'speaker', eventDetails: 'false' } : {}) }).toString();
+        const effectiveVariant = layout === 'announcement' ? { ...variant, avatar: 'true', name: 'true' } : variant;
+        const query = new URLSearchParams({ username, layout, ...effectiveVariant, ...(social && variantIndex % 2 ? { event: 'europe-2027', role: 'speaker', eventDetails: 'false' } : {}) }).toString();
         const response = await cardGET(new Request(`https://cards.test/card?${query}`));
         assert.equal(response.status, 200);
         const expected = await response.text();
         const actual = renderPreview(profile, variantIndex % 2 ? `?${query}` : query, avatar.data);
         // Never print embedded font payloads on a failed assertion.
         assert.ok(actual === expected, `${username} variant ${variantIndex}: ${digest(actual)} != ${digest(expected)}`);
-        const visible = variant.avatar !== 'false' && (social || variant.header !== 'false');
+        const visible = effectiveVariant.avatar !== 'false' && (social || effectiveVariant.header !== 'false');
         assert.equal(actual.includes('<image '), photo && visible);
       }
     }
@@ -72,7 +73,7 @@ test('preview and server retain identical validator, renderer and error identiti
   assert.equal(serverCard, renderCard);
   assert.equal(serverSocial, renderSocial);
   const profile = { userName: 'example', name: 'Example', badges: [] };
-  for (const query of ['username=other', 'username=example&username=example', 'username=Example', 'username=example&size=320', 'username=example&foreground=bad', 'username=example&avatar=yes', 'username=example&layout=unknown', 'username=example&event=asia-2027', 'username=example&layout=avatar&event=unknown', 'username=example&omitTeams=', 'username=example&omitSocial=BAD', 'username=example&name=false&name=true']) {
+  for (const query of ['username=other', 'username=example&username=example', 'username=Example', 'username=example&size=320', 'username=example&foreground=bad', 'username=example&avatar=yes', 'username=example&layout=unknown', 'username=example&event=asia-2027', 'username=example&layout=avatar&event=unknown', 'username=example&layout=announcement&avatar=false', 'username=example&layout=announcement&name=false', 'username=example&omitTeams=', 'username=example&omitSocial=BAD', 'username=example&name=false&name=true']) {
     assert.throws(() => renderPreview(profile, query), ProfileError);
   }
   for (const input of [null, undefined, {}, new URLSearchParams('username=example')]) assert.throws(() => renderPreview(profile, input), ProfileError);

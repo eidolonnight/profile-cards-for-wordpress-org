@@ -41,6 +41,7 @@ export function queryOptions(request) {
     if (value !== null && value !== 'true' && value !== 'false') throw new ProfileError('invalid_option', `${key} must be true or false.`);
     options[key] = value === null ? fallback : value === 'true';
   }
+  if (layout === 'announcement' && (!options.avatar || !options.name)) throw new ProfileError('invalid_option', 'WordCamp social cards require avatar and name.');
   for (const [key, fallback] of Object.entries({ ...DEFAULT_COLORS, ...(social ? EVENTS.find(event => event.id === options.event).colors : {}) })) {
     const value = params.get(key) ?? (['profile', 'square'].includes(layout) && key === 'linkColor' ? options.subHeaderColor : fallback);
     if (!/^[0-9a-f]{6}$/i.test(value)) throw new ProfileError('invalid_color', `${key} must be a six-digit hex color without #.`);

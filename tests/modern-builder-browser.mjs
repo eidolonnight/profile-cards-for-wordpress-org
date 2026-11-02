@@ -272,7 +272,7 @@ try {
   await blocked.addInitScript(() => { Object.defineProperty(window, 'localStorage', { get() { throw new DOMException('Blocked', 'SecurityError'); } }); });
   const bp = await blocked.newPage(); await navigate(bp, '/create'); await ready(bp); await bp.locator('#site-theme').click();
   assert.equal(await bp.evaluate(() => getComputedStyle(document.documentElement).backgroundColor), light); await blocked.close();
-  const noThemeScript = await browser.newContext({ colorScheme: 'dark' }); watch(noThemeScript); await noThemeScript.route('**/theme.js*', r => r.abort()); const tp = await noThemeScript.newPage(); await navigate(tp); await ready(tp);
+  const noThemeScript = await browser.newContext({ colorScheme: 'dark' }); watch(noThemeScript); await noThemeScript.route(origin + '/theme.js*', r => r.abort()); const tp = await noThemeScript.newPage(); await navigate(tp); await ready(tp);
   assert.equal(await tp.evaluate(() => getComputedStyle(document.documentElement).backgroundColor), dark); assert.equal(await tp.locator('#site-theme').isVisible(), false); await noThemeScript.close();
   report.checks.push('Both routes have no-JavaScript OS-theme fallback, blocked storage remains functional, and blocked theme enhancement preserves CSS and the builder');
   assert.deepEqual(report.errors, []); assert.deepEqual([...new Set(report.externalOrigins)], []);

@@ -23,7 +23,7 @@
     profile: null, username: '', profileVersion: 0, renderVersion: 0,
     profileController: null, renderController: null, timer: null,
     svg: null, previewURL: null, ready: false, demo: false,
-    layout: 'profile', layoutChoices: {}, customColorKeys: new Set(),
+    layout: 'announcement', layoutChoices: {}, customColorKeys: new Set(),
     selectionUsername: '', omitTeams: new Set(),
     catalog: null, catalogPromise: null, catalogFailed: false,
     pendingEvent: null, pendingRole: null, restoreInvalid: false,
@@ -128,6 +128,10 @@
   function syncControls() {
     const layout = $('layout').value;
     const profileLayout = isModern(layout), social = isSocial(layout), announcement = layout === 'announcement';
+    if (announcement) {
+      $('avatar').checked = true;
+      $('name').checked = true;
+    }
     syncAutomaticColors();
     $('preset-event').hidden = !social;
     $('preset-event').disabled = social && !state.catalog;
@@ -135,14 +139,17 @@
     $('profile-fields').hidden = !profileLayout && !announcement;
     $('public-fields-help').hidden = !profileLayout && !announcement;
     $('public-fields-help').textContent = announcement
-      ? 'Your name and username come from your public profile. Uncheck either to leave it off the image.' : profileFieldsHelp;
+      ? 'Your avatar and name are required. Your username can be included or left off.' : profileFieldsHelp;
+    $('avatar').disabled = announcement;
+    $('avatar-label').textContent = announcement ? 'Avatar (required)' : layout === 'avatar' ? 'Include my profile photo' : 'Avatar';
+    $('name-label').textContent = announcement ? 'Name (required)' : 'Name';
     for (const key of profileToggles) {
       const applicable = profileLayout || (announcement && ['name', 'handle'].includes(key));
       $(key).closest('label').hidden = !applicable;
-      $(key).disabled = !applicable;
+      $(key).disabled = !applicable || (announcement && key === 'name');
     }
     $('individual-details').hidden = !profileLayout || !state.profile;
-    $('avatar-label').textContent = layout === 'avatar' ? 'Include my profile photo' : 'Avatar';
+
     $('badges').closest('label').hidden = social;
     $('badges').disabled = social;
     $('badgeNames').closest('label').hidden = !profileLayout;
@@ -777,7 +784,7 @@
     const params = new URLSearchParams(location.search);
     let invalid = false;
     // Existing shared builder URLs predate layout and must stay classic.
-    if (!params.has('layout')) $('layout').value = params.has('username') ? 'classic' : 'profile';
+    if (!params.has('layout')) $('layout').value = params.has('username') ? 'classic' : 'announcement';
     else if (params.getAll('layout').length === 1 && layouts.includes(params.get('layout'))) $('layout').value = params.get('layout');
     else invalid = true;
     state.layout = $('layout').value;
@@ -790,6 +797,7 @@
       if (key === 'eventDetails' && !isSocial()) { invalid = true; continue; }
       const value = params.get(key);
       if (params.getAll(key).length !== 1 || !['true', 'false'].includes(value)) { invalid = true; continue; }
+      if ($('layout').value === 'announcement' && ['avatar', 'name'].includes(key) && value === 'false') { invalid = true; continue; }
       $(key).checked = value === 'true';
     }
     for (const key of colors) {

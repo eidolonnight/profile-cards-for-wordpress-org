@@ -5,7 +5,8 @@ import { parseHTML } from 'linkedom/worker';
 
 const { document } = parseHTML(await readFile(new URL('../public/index.html', import.meta.url), 'utf8'));
 
-test('Step 1 starts with username before format, event, content and appearance', () => {
+test('developer-counted steps start at 00 and the first step starts with username', () => {
+  assert.deepEqual([...document.querySelectorAll('.section-heading .step')].map(node => node.textContent), ['00', '01']);
   const controls = document.querySelector('.controls');
   const order = [...controls.querySelectorAll('#layout, #event-settings, #profile-form, #display-settings, #customize-colors, .background-settings')].map(node => node.id || node.className);
   assert.deepEqual(order, ['profile-form', 'layout', 'event-settings', 'display-settings', 'customize-colors', 'background-settings']);

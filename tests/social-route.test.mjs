@@ -29,7 +29,7 @@ test('social card route uses 1024 photos despite header=false; CSP and attachmen
 test('social route headers truthfully distinguish hidden and initials, with no hidden fetch', async () => {
   const saved=globalThis.fetch;
   try {
-    for (const layout of ['avatar','announcement']) for (const avatar of ['true','false']) {
+    for (const layout of ['avatar','announcement']) for (const avatar of (layout === 'announcement' ? ['true'] : ['true','false'])) {
       const calls=[];
       globalThis.fetch=async url => {calls.push(url);return url.startsWith('https://profiles.wordpress.org/')?new Response(html('e'.repeat(32)),{headers:{'Content-Type':'text/html'}}):new Response('',{status:404});};
       const response=await GET(request({username:`missing-${layout}-${avatar}`,layout,avatar,header:'false'}));
@@ -55,7 +55,7 @@ test('both social layouts share one high-resolution avatar cache', async () => {
 test('invalid social route queries fail before fetching and use private error headers', async () => {
   const saved=globalThis.fetch; let calls=0;globalThis.fetch=async () => {calls++;throw new Error('must not fetch');};
   try {
-    for (const params of [{layout:'profile',event:'asia-2027'},{layout:'avatar',role:'official'},{layout:'announcement',event:'unknown'},{layout:'avatar',eventDetails:'yes'}]) {
+    for (const params of [{layout:'profile',event:'asia-2027'},{layout:'avatar',role:'official'},{layout:'announcement',event:'unknown'},{layout:'announcement',avatar:'false'},{layout:'announcement',name:'false'},{layout:'avatar',eventDetails:'yes'}]) {
       const response=await GET(request({username:'synthetic',...params}));assert.equal(response.status,400);assert.equal(response.headers.get('Cache-Control'),'private, no-store');
     }
     assert.equal(calls,0);

@@ -44,6 +44,7 @@ test('social defaults and strict query parsing preserve old layout contracts', (
     assert.equal(q({ layout, eventDetails:'false' }).eventDetails, false);
   }
   for (const layout of ['classic', 'profile']) for (const [key, value] of [['event','asia-2027'], ['role','attendee'], ['eventDetails','false']]) assert.throws(() => q({ layout, [key]:value }), { code:'invalid_parameter' });
+  for (const key of ['avatar', 'name']) assert.throws(() => q({ layout:'announcement', [key]:'false' }), { code:'invalid_option' });
   assert.throws(() => queryOptions(new Request('https://cards.test/card?username=synthetic&event=asia-2027')), { code:'invalid_parameter' });
   for (const [key, values] of Object.entries({ event:['', 'ASIA-2027', 'https://asia.wordcamp.org/2027/', 'asia-2027\n'], role:['', 'Speaker', 'official', 'attendee '], eventDetails:['', '1', 'yes', 'TRUE'], layout:['Avatar', 'social'] })) for (const value of values) assert.throws(() => q({ [key]:value }), { code:'invalid_option' });
   for (const suffix of ['event=asia-2027&event=asia-2027', 'role=speaker&role=attendee', 'eventDetails=true&eventDetails=false', 'size=1024', 'avatarUrl=https://evil.test/a']) assert.throws(() => queryOptions(new Request(`https://cards.test/card?username=synthetic&layout=avatar&${suffix}`)), { code:'invalid_parameter' });
@@ -79,15 +80,20 @@ for (const event of ['asia-2027','europe-2027','us-2027','india-2027']) for (con
   });
 }
 
-test('social omissions do not leak names, handles, metadata or old fields', () => {
+test('social omissions keep required announcement identity while hiding optional content', () => {
   for (const layout of ['avatar','announcement']) {
-    const options = q({ layout, avatar:'false', name:'false', handle:'false', eventDetails:'false', header:'false', badges:'true', link:'true', teams:'true' });
+    const options = q({ layout, ...(layout === 'avatar' ? { avatar:'false', name:'false' } : {}), handle:'false', eventDetails:'false', header:'false', badges:'true', link:'true', teams:'true' });
     const svg = renderSocial(profile, options, png); const d = doc(svg);
-    assert.equal(d.querySelector('[data-field="avatar"], [data-field="name"], [data-field="handle"], [data-field="eventDetails"], image'), null);
-    assert.doesNotMatch(svg, /Ada|Example|synthetic|Penang|April|2026-10-01|SECRET|https:\/\/asia/);
+    assert.equal(d.querySelector('[data-field="handle"], [data-field="eventDetails"]'), null);
+    assert.doesNotMatch(svg, /synthetic|Penang|April|2026-10-01|SECRET|https:\/\/asia/);
     if (layout === 'avatar') {
+      assert.equal(d.querySelector('[data-field="avatar"], [data-field="name"], image'), null);
+      assert.doesNotMatch(svg, /Ada|Example/);
       assert.equal(d.querySelector('rect'), null);
       for (const circle of d.querySelectorAll('circle')) assert.equal(circle.getAttribute('fill'), 'none');
+    } else {
+      assert.ok(d.querySelector('[data-field="avatar"] image'));
+      assert.equal(d.querySelector('[data-field="name"]').textContent, profile.name);
     }
     const visible = doc(renderSocial(profile, q({ layout, header:'false', teams:'false', badges:'false', link:'false' }), png));
     assert.ok(visible.querySelector('[data-field="avatar"] image'));
@@ -112,15 +118,20 @@ test('frame text is clipped to the annulus, including hostile combining marks', 
   assert.equal(d.querySelector('[data-field="name"], [data-field="handle"], [data-field="eventDetails"]'), null);
 });
 
-test('all independent social visibility combinations preserve unrelated fields', () => {
-  const flags = ['avatar','name','handle','eventDetails'];
-  for (const layout of ['avatar','announcement']) for (let mask=0;mask<16;mask++) {
-    const params=Object.fromEntries(flags.map((key,i) => [key,String(Boolean(mask & (1 << i)))]));
-    const svg=renderSocial(profile,q({layout,...params}),null); const d=doc(svg);
-    for (const key of flags) assert.equal(Boolean(d.querySelector(`[data-field="${key}"]`)),params[key]==='true' && (layout==='announcement' || key==='avatar'),`${layout}/${mask}/${key}`);
-    if(params.name==='false') assert.doesNotMatch(svg,/Ada Example|>AE</);
-    if(params.handle==='false') assert.doesNotMatch(svg,/@synthetic/);
-    assert.ok(d.querySelector('[data-field="event"]'));assert.ok(d.querySelector('[data-field="role"]'));
+test('all valid social visibility combinations preserve unrelated fields', () => {
+  for (const layout of ['avatar','announcement']) {
+    const flags = layout === 'announcement' ? ['handle','eventDetails'] : ['avatar','name','handle','eventDetails'];
+    for (let mask=0;mask<(1 << flags.length);mask++) {
+      const params=Object.fromEntries(flags.map((key,i) => [key,String(Boolean(mask & (1 << i)))]));
+      const svg=renderSocial(profile,q({layout,...params}),null); const d=doc(svg);
+      for (const key of ['avatar','name','handle','eventDetails']) {
+        const expected = layout === 'announcement' ? ['avatar','name'].includes(key) || params[key] === 'true' : key === 'avatar' && params[key] === 'true';
+        assert.equal(Boolean(d.querySelector(`[data-field="${key}"]`)), expected, `${layout}/${mask}/${key}`);
+      }
+      if(params.name==='false') assert.doesNotMatch(svg,/Ada Example|>AE</);
+      if(params.handle==='false') assert.doesNotMatch(svg,/@synthetic/);
+      assert.ok(d.querySelector('[data-field="event"]'));assert.ok(d.querySelector('[data-field="role"]'));
+    }
   }
 });
 
@@ -143,7 +154,8 @@ test('long hostile Unicode identities stay bounded, XML-safe and omission-safe',
       assert.ok(max > 0); assert.ok(measureEventText(node.textContent, size, EVENT_FONT_METRICS[node.getAttribute('data-face')]) <= max + 0.01);
     }
     if (layout === 'announcement') assert.ok(d.querySelector('[data-field="name"]').textContent.includes('…'));
-    assert.doesNotMatch(renderSocial(hostile, q({ layout, name:'false', handle:'false' }), null), /&lt;script|&lt;handle|漢/);
+    const omissionSafe = renderSocial(hostile, q({ layout, ...(layout === 'avatar' ? { name:'false' } : {}), handle:'false' }), null);
+    assert.doesNotMatch(omissionSafe, layout === 'avatar' ? /&lt;script|&lt;handle|漢/ : /&lt;handle/);
   }
 });
 

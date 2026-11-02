@@ -61,6 +61,14 @@ try {
   for (const width of [1440, 320]) await capture('default', width);
   await page.setViewportSize({ width: 1440, height: 1050 });
   if (!baseline) {
+    assert.equal(await page.locator('#layout').inputValue(), 'announcement');
+    assert.deepEqual(await page.locator('#layout option:not([hidden])').evaluateAll(options => options.map(option => option.textContent)), ['WordCamp social card', 'WordCamp avatar frame', 'Vertical card', 'Landscape banner']);
+    assert.deepEqual(await page.locator('.section-heading .step').allTextContents(), ['00', '01']);
+    for (const id of ['avatar', 'name']) {
+      assert.equal(await page.locator('#' + id).isChecked(), true, `${id} required default`);
+      assert.equal(await page.locator('#' + id).isDisabled(), true, `${id} required control`);
+    }
+    await page.locator('#layout').selectOption('profile'); await ready();
     assert.doesNotMatch(await page.locator('.controls').innerText(), /Color palette/i);
     assert.deepEqual(await page.locator('.controls #layout, .controls #event-settings, .controls #profile-form, .controls #display-settings, .controls #customize-colors, .controls .background-settings').evaluateAll(nodes => nodes.map(node => node.id || node.className)), ['profile-form', 'layout', 'event-settings', 'display-settings', 'customize-colors', 'background-settings']);
     await page.locator('#username').focus(); await page.keyboard.press('Tab');
@@ -115,7 +123,8 @@ try {
       assert.equal(await page.locator('#header').count(), 0);
       for (const id of profileControls) {
         assert.equal(await page.locator('#' + id).isVisible(), applicable[layout].includes(id), `${layout}/${id} visibility`);
-        assert.equal(await page.locator('#' + id).isEnabled(), applicable[layout].includes(id), `${layout}/${id} applicability`);
+        const required = layout === 'announcement' && ['avatar', 'name'].includes(id);
+        assert.equal(await page.locator('#' + id).isEnabled(), applicable[layout].includes(id) && !required, `${layout}/${id} applicability`);
       }
       for (const id of applicable[layout]) assert.equal(await page.locator('#' + id).isChecked(), true, `${layout}/${id} fresh default`);
       assert.equal(await page.locator('#event-controls').evaluate(node => node.disabled), !social);
@@ -128,16 +137,21 @@ try {
         assert.ok(profileBox.y + profileBox.height <= eventBox.y);
       }
       await capture(layout, 390); report.layouts.push(layout);
-      await page.locator('#avatar').uncheck(); await ready();
-      const fields = await page.locator('#card-preview').evaluate(async image => new DOMParser().parseFromString(await (await fetch(image.src)).text(), 'image/svg+xml').querySelectorAll('[data-field="avatar"]').length);
-      assert.equal(fields, 0, `${layout} avatar omission`);
+      if (layout === 'announcement') {
+        assert.equal(await page.locator('#avatar').isChecked(), true);
+        assert.equal(await page.locator('#avatar').isDisabled(), true);
+      } else {
+        await page.locator('#avatar').uncheck(); await ready();
+        const fields = await page.locator('#card-preview').evaluate(async image => new DOMParser().parseFromString(await (await fetch(image.src)).text(), 'image/svg+xml').querySelectorAll('[data-field="avatar"]').length);
+        assert.equal(fields, 0, `${layout} avatar omission`);
+      }
     }
     for (const layout of Object.keys(applicable)) {
       await page.locator('#layout').selectOption(layout); await ready();
-      for (const id of applicable[layout]) assert.equal(await page.locator('#' + id).isChecked(), id !== 'avatar', `${layout}/${id} persisted choice`);
-      await page.locator('#avatar').check(); await ready();
+      for (const id of applicable[layout]) assert.equal(await page.locator('#' + id).isChecked(), id !== 'avatar' || layout === 'announcement', `${layout}/${id} persisted choice`);
+      if (layout !== 'announcement') { await page.locator('#avatar').check(); await ready(); }
     }
-    report.checks.push('All five layouts default every applicable control on; individual avatar omissions affect SVG and persist independently across all five layouts; irrelevant controls remain hidden and disabled');
+    report.checks.push('All five layouts default every applicable control on; avatar omissions persist in formats where allowed while the social card requires avatar and name; irrelevant controls remain hidden and disabled');
     await page.goto(origin + '/create?username=eidolonnight&layout=profile&header=false&name=false&badges=false&link=false');
     assert.doesNotMatch(await page.locator('#status').innerText(), /Some URL settings were invalid/);
     await page.locator('#create-button').click(); await ready();

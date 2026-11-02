@@ -5,10 +5,10 @@ import { parseHTML } from 'linkedom/worker';
 
 const root = new URL('../', import.meta.url);
 
-test('builder offers both social formats while preserving profile/classic choices', async () => {
+test('builder leads with the default WordCamp social card while preserving profile/classic choices', async () => {
   const { document } = parseHTML(await readFile(new URL('public/index.html', root), 'utf8'));
-  assert.deepEqual([...document.querySelectorAll('#layout option:not([hidden])')].map(option => [option.value, option.textContent]), [['profile', 'Landscape banner'], ['square', 'Vertical card'], ['avatar', 'WordCamp avatar frame'], ['announcement', 'WordCamp social card']]);
-  assert.equal(document.querySelector('#layout option[selected]').value, 'profile');
+  assert.deepEqual([...document.querySelectorAll('#layout option:not([hidden])')].map(option => [option.value, option.textContent]), [['announcement', 'WordCamp social card'], ['avatar', 'WordCamp avatar frame'], ['square', 'Vertical card'], ['profile', 'Landscape banner']]);
+  assert.equal(document.querySelector('#layout option[selected]').value, 'announcement');
   assert.ok(document.querySelector('#layout option[value="classic"][hidden]'));
   assert.equal(document.querySelectorAll('#display-settings > legend').length, 1);
   assert.equal(document.querySelectorAll('#profile-fields legend').length, 0);
