@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { cardURLFromControls, selectPalette, assertInitialEmpty, assertDownloadedPNG } from './ui-acceptance.mjs';
+import { cardURLFromControls, selectPalette, assertInitialDemo, assertDownloadedPNG } from './ui-acceptance.mjs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { parseHTML } from 'linkedom/worker';
@@ -29,7 +29,7 @@ try {
   }
   check('malformed team omissions are rejected during builder restoration');
   assert.equal((await page.goto(base, { waitUntil: 'networkidle' })).status(), 200);
-  await assertInitialEmpty(page); check('fresh builder stays idle until a username is submitted');
+  await assertInitialDemo(page); check('fresh builder renders the bundled Matt demo without profile API requests');
   await page.locator('#layout').selectOption('profile');
   assert.equal(await page.locator('#layout').inputValue(), 'profile');
   assert.equal(await page.locator('#layout option:checked').innerText(), 'Landscape banner');

@@ -13,6 +13,18 @@ WordPress trademarks remain subject to their applicable rights.
 The original supplied PNG and export recipe are in assets/branding/ in the
 project source. The complete GPL version 2 text is provided at /LICENSE.
 
+MATT DEMO PROFILE SNAPSHOT
+
+matt-demo.js contains a dated snapshot of public profile fields from
+https://profiles.wordpress.org/matt/ captured on 2026-11-03. No portrait is
+redistributed; the request-free demo renders initials instead. The avatar URL
+recorded in the snapshot module is provenance only and is never fetched for
+the bundled demo.
+Verified social-account fields were captured on the same date from
+https://en.gravatar.com/767fc9c115a1b989744c755db47feb60.json.
+The snapshot is used only for the request-free initial demo and is labeled as
+bundled, not live.
+
 
 ========================================================================
 boolbase/LICENSE

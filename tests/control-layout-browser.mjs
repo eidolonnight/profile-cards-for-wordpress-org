@@ -50,19 +50,21 @@ const capture = async (state, width) => {
   }
 };
 try {
-  for (const path of ['/', '/styles.css', '/app.js', '/background.js']) {
+  for (const path of ['/', '/styles.css', '/app.js', '/matt-demo.js', '/background.js']) {
     const response = await context.request.get(origin + path); assert.equal(response.status(), 200);
     report.sourceHashes[path] = createHash('sha256').update(await response.body()).digest('hex');
   }
   const documentResponse = await page.goto(origin);
   assert.equal(documentResponse.status(), 200);
   if (report.version) assert.equal(documentResponse.headers()['x-spacefast-version'], report.version);
+  await ready();
   for (const width of [1440, 320]) await capture('default', width);
   await page.setViewportSize({ width: 1440, height: 1050 });
   if (!baseline) {
-    assert.equal(await page.locator('#exports').evaluate(element => element.disabled), true);
-    assert.equal(await page.locator('#card-preview').isHidden(), true);
+    assert.equal(await page.locator('#exports').evaluate(element => element.disabled), false);
+    assert.equal(await page.locator('#card-preview').isHidden(), false);
     assert.deepEqual(await page.evaluate(() => performance.getEntriesByType('resource').map(entry => new URL(entry.name).pathname).filter(path => ['/json', '/preview-data', '/card'].includes(path))), []);
+    assert.match(await page.locator('#status').innerText(), /Demo using a bundled snapshot of Matt’s profile/);
     assert.equal(await page.locator('#layout').inputValue(), 'announcement');
     assert.deepEqual(await page.locator('#layout option:not([hidden])').evaluateAll(options => options.map(option => option.textContent)), ['WordCamp social card', 'WordCamp avatar frame', 'Vertical card', 'Landscape banner']);
     assert.deepEqual(await page.locator('.section-heading .step').allTextContents(), ['00', '01']);

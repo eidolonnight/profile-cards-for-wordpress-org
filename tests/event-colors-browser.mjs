@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { parseHTML } from 'linkedom/worker';
-import { cardURLFromControls, assertDownloadedPNG, assertInitialEmpty } from './ui-acceptance.mjs';
+import { cardURLFromControls, assertDownloadedPNG, assertInitialDemo } from './ui-acceptance.mjs';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const origin = process.env.TEST_ORIGIN || 'http://127.0.0.1:4216';
 const evidence = process.env.EVIDENCE_DIR;
@@ -42,7 +42,7 @@ try {
   assert.equal(catalog.events.find(e => e.id === 'us-2027').location, '');
   const response = await page.goto(origin); assert.equal(response.status(), 200);
   if (process.env.EXPECTED_VERSION) assert.equal(response.headers()['x-spacefast-version'], process.env.EXPECTED_VERSION);
-  await assertInitialEmpty(page); assert.equal(await page.locator('#preset-event').isHidden(), true);
+  await assertInitialDemo(page); assert.equal(await page.locator('#preset-event').isHidden(), true);
   await page.locator('#username').fill('eidolonnight'); await page.locator('#create-button').click(); await ready();
   for (const layout of ['avatar', 'announcement']) {
     await page.locator('#layout').selectOption(layout); await ready();

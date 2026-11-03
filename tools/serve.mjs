@@ -7,12 +7,13 @@ import { GET as events } from '../functions/events.js';
 import { GET as previewData } from '../functions/preview-data.js';
 import { BROWSER_MODULES, browserModuleSource } from './browser-modules.mjs';
 // Loopback-only development adapter. Real Functions exports are invoked unchanged.
-const files = new Map([['/', ['index.html', 'text/html']], ['/create', ['index.html', 'text/html']], ['/index.html', ['index.html', 'text/html']], ['/app.js', ['app.js', 'text/javascript']], ['/THIRD-PARTY-NOTICES.txt', ['THIRD-PARTY-NOTICES.txt', 'text/plain']], ['/FONT-LICENSES.txt', ['FONT-LICENSES.txt', 'text/plain']], ['/styles.css', ['styles.css', 'text/css']]]);
+const files = new Map([['/', ['index.html', 'text/html']], ['/create', ['index.html', 'text/html']], ['/index.html', ['index.html', 'text/html']], ['/app.js', ['app.js', 'text/javascript']], ['/matt-demo.js', ['matt-demo.js', 'text/javascript']], ['/THIRD-PARTY-NOTICES.txt', ['THIRD-PARTY-NOTICES.txt', 'text/plain']], ['/FONT-LICENSES.txt', ['FONT-LICENSES.txt', 'text/plain']], ['/styles.css', ['styles.css', 'text/css']]]);
 const root = fileURLToPath(new URL('../public/', import.meta.url));
 files.set('/background.js', ['background.js', 'text/javascript']);
 files.set('/theme.js', ['theme.js', 'text/javascript']);
 for (const name of ['site-logo.png', 'favicon.png']) files.set(`/${name}`, [name, 'image/png']);
 files.set('/site-favicon.ico', ['site-favicon.ico', 'image/x-icon']);
+
 // Public modules are an exact allowlist, never a filesystem path from the URL.
 const shared = new Map(BROWSER_MODULES.map(([source, path]) => [`/${path}`, new URL(`../${source}`, import.meta.url)]));
 const port = Number(process.env.PORT || 4197);

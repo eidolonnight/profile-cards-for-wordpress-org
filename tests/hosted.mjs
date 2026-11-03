@@ -32,7 +32,7 @@ const base = space.liveUrl.replace(/\/$/, '');
 const browser = await chromium.launch({ executablePath: '/usr/bin/chromium', args: ['--no-sandbox'], headless: true });
 const evidence = release + '/hosted'; await mkdir(evidence, { recursive: true, mode: 0o700 });
 const report = { origin: base, version: version.id, accessPolicy, assetRevision, anonymous: [], immutableAnonymous: [], runtime: [], sourceDenied: [], hashes: [], checks: [] };
-const accessPaths = ['/', '/create', '/json?username=eidolonnight', '/card?username=eidolonnight', '/events', '/preview-data?username=eidolonnight&size=0', '/preview/preview.js', '/preview/fonts.js'];
+const accessPaths = ['/', '/create', '/json?username=eidolonnight', '/card?username=eidolonnight', '/events', '/preview-data?username=eidolonnight&size=0', '/matt-demo.js', '/preview/preview.js', '/preview/fonts.js'];
 try {
   const anonymous = await browser.newContext();
   for (const path of accessPaths) {
@@ -69,7 +69,7 @@ try {
   for (const path of ['/package.json', '/package-lock.json', '/sf.jsonc', '/functions/_profile.js', '/functions/preview-data.js', '/tests/profile.test.mjs', '/tools/serve.mjs']) {
     const response = await context.request.get(base + path); report.sourceDenied.push({ path, status: response.status() }); assert.equal(response.status(), 404, 'Source path exposed: ' + path);
   }
-  for (const [path, expected] of [['/json?username=eidolonnight', 200], ['/card?username=eidolonnight', 200], ['/preview-data?username=eidolonnight&size=320', 200], ['/preview-data?username=eidolonnight&size=1024', 200], ['/preview-data?username=eidolonnight&size=0', 200], ['/preview-data?username=eidolonnight', 400], ['/preview-data?username=eidolonnight&size=2048', 400], ['/json', 400], ['/card?username=../bad', 406], ['/card?username=eidolonnight&nameColor=bad', 400], ['/json?username=wp-card-missing-test-267801010000', 404]]) {
+  for (const [path, expected] of [['/json?username=eidolonnight', 200], ['/card?username=eidolonnight', 200], ['/preview-data?username=eidolonnight&size=all', 200], ['/preview-data?username=eidolonnight&size=320', 200], ['/preview-data?username=eidolonnight&size=1024', 200], ['/preview-data?username=eidolonnight&size=0', 200], ['/preview-data?username=eidolonnight', 400], ['/preview-data?username=eidolonnight&size=2048', 400], ['/json', 400], ['/card?username=../bad', 406], ['/card?username=eidolonnight&nameColor=bad', 400], ['/json?username=wp-card-missing-test-267801010000', 404]]) {
     const response = await context.request.get(base + path, { timeout: 45000 }); const text = await response.text();
     const item = { path, status: response.status(), contentType: response.headers()['content-type'], avatar: response.headers()['x-profile-avatar'] || null };
     if (response.status() !== expected) { try { item.error = JSON.parse(text).error; } catch { item.error = 'Non-JSON response'; } }
@@ -77,11 +77,17 @@ try {
     if (expected === 200 && path.startsWith('/json')) { const profile = JSON.parse(text); assert.equal(profile.name, 'Nicholas Garofalo'); report.badges = profile.badges.length; await writeFile(evidence + '/profile.json', text); }
     if (expected === 200 && path.startsWith('/card')) { assert.ok(text.startsWith('<svg')); assert.ok(text.includes('data:image/')); await writeFile(evidence + '/card.svg', text); }
     if (expected === 200 && path.startsWith('/preview-data')) {
-      const data = JSON.parse(text), size = Number(new URL(path, base).searchParams.get('size'));
-      assert.equal(data.profile.userName, 'eidolonnight'); assert.equal(data.avatar.size, size);
-      assert.ok(Number.isInteger(data.maxAgeMs) && data.maxAgeMs >= 0 && data.maxAgeMs <= 900000);
-      assert.equal(data.avatar.status, size ? 'embedded' : 'hidden');
-      if (size) assert.match(data.avatar.data, /^data:image\/(png|jpeg|webp);base64,/); else assert.equal(data.avatar.data, null);
+      const data = JSON.parse(text), sizeParam = new URL(path, base).searchParams.get('size');
+      assert.equal(data.profile.userName, 'eidolonnight');
+      assert.ok(Number.isInteger(data.maxAgeMs) && data.maxAgeMs >= 0 && data.maxAgeMs <= 3600000);
+      if (sizeParam === 'all') {
+        assert.deepEqual(data.avatars.map(avatar => avatar.size), [320, 1024]);
+        for (const avatar of data.avatars) { assert.equal(avatar.status, 'embedded'); assert.match(avatar.data, /^data:image\/(png|jpeg|webp);base64,/); }
+      } else {
+        const size = Number(sizeParam); assert.equal(data.avatar.size, size);
+        assert.equal(data.avatar.status, size ? 'embedded' : 'hidden');
+        if (size) assert.match(data.avatar.data, /^data:image\/(png|jpeg|webp);base64,/); else assert.equal(data.avatar.data, null);
+      }
       // The handler emits private, no-store; hosted Functions responses expose
       // no-store, which still forbids storage by both shared and private caches.
       item.cacheControl = response.headers()['cache-control'];

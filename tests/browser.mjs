@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { cardURLFromControls, selectPalette, assertInitialEmpty, assertDownloadedPNG, assertCleanupFailures } from './ui-acceptance.mjs';
+import { cardURLFromControls, selectPalette, assertInitialDemo, assertDownloadedPNG, assertCleanupFailures } from './ui-acceptance.mjs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
@@ -21,7 +21,7 @@ const noOverflow = async () => assert.ok(await page.evaluate(() => document.docu
 const check = name => report.checks.push(name);
 try {
   const response = await page.goto(base, { waitUntil: 'networkidle' }); assert.equal(response.status(), 200); report.version = response.headers()['x-spacefast-version'] || null;
-  await assertInitialEmpty(page); check('fresh builder stays idle until a username is submitted');
+  await assertInitialDemo(page); check('fresh builder renders the bundled Matt demo without profile API requests');
   await page.locator('#layout').selectOption(cardLayout); check(`${cardLayout} layout remains available`);
   if (cardLayout === 'square') assert.equal(await page.locator('#layout option:checked').innerText(), 'Vertical card');
   await page.locator('#username').fill('eidolonnight'); await page.locator('#create-button').click(); await ready();
@@ -64,7 +64,7 @@ try {
   await page.locator('#username').fill('another-name'); assert.equal(await page.locator('#exports').evaluate(el => el.disabled), true); assert.equal(await page.locator('#card-preview').isHidden(), true); check('changing username invalidates old exports');
   // Explicitly synthetic network failure: verifies UI error behavior without claiming a real outage.
   await page.route('**/preview-data?username=another-name&*', route => route.fulfill({ status: 502, contentType: 'application/json', body: JSON.stringify({ error: { code: 'test_outage', message: 'Simulated upstream outage for browser test.' } }) })); await page.locator('#create-button').click(); await page.waitForFunction(() => document.getElementById('status').dataset.kind === 'error'); assert.equal(await page.locator('#exports').evaluate(el => el.disabled), true); assert.ok((await page.locator('#status').innerText()).includes('Simulated upstream')); check('simulated upstream error is explicit and does not leave old downloads');
-  await assertCleanupFailures(context, base); check('idle startup, malformed/manual shared URLs, download-only actions, canvas failures and stale PNG downloads recover safely');
+  await assertCleanupFailures(context, base); check('bundled-demo startup, malformed/manual shared URLs, download-only actions, canvas failures and stale PNG downloads recover safely');
   assert.deepEqual(errors, []); assert.deepEqual([...new Set(requests)], []); check('no page errors or off-origin app requests');
   report.pass = true;
 } catch (error) { report.pass = false; report.failure = error.message; throw error; }

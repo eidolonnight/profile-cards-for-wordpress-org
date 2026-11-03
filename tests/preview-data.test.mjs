@@ -35,7 +35,7 @@ test('preview-data strictly rejects unknown/repeated keys, malformed usernames a
   } finally { globalThis.fetch = saved; }
 });
 
-test('size=0 is lazy, keeps /json profile shape, and shares profile cache across both photo sizes', async () => {
+test('legacy sizes stay compatible with the released client while sharing the one-hour server cache', async () => {
   const saved = globalThis.fetch; const calls = []; const username = 'preview-lazy'; const hash = '9'.repeat(32);
   globalThis.fetch = async (url, init) => {
     calls.push(url); assert.equal(init.redirect, 'manual'); assert.ok(init.signal instanceof AbortSignal);
@@ -56,8 +56,59 @@ test('size=0 is lazy, keeps /json profile shape, and shares profile cache across
       const body = await response.json(); assert.deepEqual(body.profile, first.profile);
       assert.deepEqual(body.avatar, { size, data: size ? `data:image/png;base64,${Buffer.from(png).toString('base64')}` : null, status: size ? 'embedded' : 'hidden' });
       assert.ok(body.maxAgeMs <= first.maxAgeMs && body.maxAgeMs >= 0);
+      const avatar = body.avatar;
+      const acceptedByReleasedClient = body.profile.userName === username && Number.isFinite(Date.parse(body.profile.fetchedAt))
+        && Number.isInteger(body.maxAgeMs) && body.maxAgeMs >= 0 && body.maxAgeMs <= 900000
+        && avatar?.size === size && ['embedded', 'initials', 'hidden'].includes(avatar.status)
+        && (avatar.data === null || (typeof avatar.data === 'string' && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(avatar.data)))
+        && (size === 0 ? avatar.data === null && avatar.status === 'hidden' : avatar.status === (avatar.data ? 'embedded' : 'initials'));
+      assert.equal(acceptedByReleasedClient, true, `released client accepts legacy size=${size}`);
     }
     assert.deepEqual(calls, [`https://profiles.wordpress.org/${username}/`, `https://secure.gravatar.com/avatar/${hash}?s=320&d=mp&r=g`, `https://secure.gravatar.com/avatar/${hash}?s=1024&d=404&r=g`]);
+  } finally { globalThis.fetch = saved; }
+});
+
+test('size=all returns the complete profile and both bounded avatar variants in one request', async () => {
+  const saved = globalThis.fetch; const calls = []; const username = 'preview-all'; const hash = '8'.repeat(32);
+  globalThis.fetch = async (url, init) => {
+    calls.push(url); assert.equal(init.redirect, 'manual'); assert.ok(init.signal instanceof AbortSignal);
+    if (url.startsWith('https://profiles.wordpress.org/')) return htmlResponse(html(hash));
+    assert.equal(init.headers.Accept, 'image/png,image/jpeg,image/webp'); return imageResponse();
+  };
+  try {
+    const response = await GET(request(`username=${username}&size=all`)); headers(response); assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.deepEqual(Object.keys(body).sort(), ['avatars', 'maxAgeMs', 'profile']);
+    assert.equal(body.profile.userName, username);
+    assert.deepEqual(body.avatars, [320, 1024].map(size => ({ size, data: `data:image/png;base64,${Buffer.from(png).toString('base64')}`, status: 'embedded' })));
+    assert.ok(Number.isInteger(body.maxAgeMs) && body.maxAgeMs > 3590000 && body.maxAgeMs <= 3600000);
+    assert.deepEqual(calls, [
+      `https://profiles.wordpress.org/${username}/`,
+      `https://secure.gravatar.com/avatar/${hash}?s=320&d=mp&r=g`,
+      `https://secure.gravatar.com/avatar/${hash}?s=1024&d=404&r=g`,
+    ]);
+  } finally { globalThis.fetch = saved; }
+});
+
+test('size=all keeps maximum accepted avatar and bounded profile data within the 4 MiB response envelope', async () => {
+  const saved = globalThis.fetch; const username = 'preview-envelope'; const hash = '7'.repeat(32);
+  const image = size => { const body = Buffer.alloc(size); body.set(png); return imageResponse(body); };
+  const badges = Array.from({ length: 200 }, (_, index) => `<span class="medal ${Array.from({ length: 8 }, (__, item) => `badge-${index}-${item}-${'x'.repeat(50)}`).join(' ')}"><span class="mn">${index}-${'名'.repeat(118)}</span></span>`).join('');
+  const teams = Array.from({ length: 64 }, (_, index) => `<span class="wp-p2-chip">${index}-${'組'.repeat(38)}</span>`).join('');
+  const accounts = Array.from({ length: 64 }, (_, index) => ({ shortname: `site-${index}`, display: '名'.repeat(120), url: `https://example.test/${index}/${'x'.repeat(1900)}`, verified: true }));
+  const page = `<header class="site-header"><h2>${'名'.repeat(250)}</h2><img class="avatar" src="https://secure.gravatar.com/avatar/${hash}"><div class="wp-p2-chip-row"><span class="wp-p2-chip-label">Teams</span>${teams}</div></header><section class="wp-p2-badges-block">${badges}</section><script id="wporg-profiles-js-extra">var userProfileData = {"gravatarHash":"${hash}"};</script>`;
+  globalThis.fetch = async url => {
+    if (url.startsWith('https://profiles.wordpress.org/')) return htmlResponse(page);
+    if (url.startsWith('https://en.gravatar.com/')) return Response.json({ entry: [{ accounts }] });
+    return image(url.includes('s=1024') ? 2 * 1024 * 1024 : 256 * 1024);
+  };
+  try {
+    const response = await GET(request(`username=${username}&size=all`)); headers(response); assert.equal(response.status, 200);
+    const body = new Uint8Array(await response.arrayBuffer());
+    assert.ok(body.byteLength < 4 * 1024 * 1024, `bounded response was ${body.byteLength} bytes`);
+    const data = JSON.parse(new TextDecoder().decode(body));
+    assert.equal(data.profile.badges.length, 200); assert.equal(data.profile.teams.length, 64); assert.equal(data.profile.social.length, 64);
+    assert.deepEqual(data.avatars.map(avatar => avatar.size), [320, 1024]);
   } finally { globalThis.fetch = saved; }
 });
 
@@ -145,15 +196,16 @@ test('freshness is remaining server-relative TTL, accounts for photo latency, cl
   };
   try {
     const first = await (await GET(request('username=preview-expiry&size=0'))).json(); assert.equal(first.maxAgeMs, 900000);
-    now += 600000;
-    const second = await (await GET(request('username=preview-expiry&size=320'))).json(); assert.equal(second.maxAgeMs, 297500); assert.equal(profileCalls, 1);
-    now += 297500;
+    const complete = await (await GET(request('username=preview-expiry&size=all'))).json(); assert.equal(complete.maxAgeMs, 3595000);
+    now += 595000;
+    const second = await (await GET(request('username=preview-expiry&size=320'))).json(); assert.equal(second.maxAgeMs, 900000); assert.equal(profileCalls, 1);
+    now += 3000000;
     const third = await (await GET(request('username=preview-expiry&size=0'))).json(); assert.equal(third.maxAgeMs, 900000); assert.equal(profileCalls, 2);
     assert.notEqual(third.profile.fetchedAt, first.profile.fetchedAt);
     const p = { fetchedAt: new Date(now).toISOString() };
-    assert.equal(profileMaxAgeMs(p, now - 1), 900000);
-    assert.equal(profileMaxAgeMs(p, now + 900001), 0);
-    assert.equal(profileMaxAgeMs(p, now + 0.5), 899999);
+    assert.equal(profileMaxAgeMs(p, now - 1), 3600000);
+    assert.equal(profileMaxAgeMs(p, now + 3600001), 0);
+    assert.equal(profileMaxAgeMs(p, now + 0.5), 3599999);
     assert.equal(profileMaxAgeMs({ fetchedAt: 'invalid' }, now), 0);
   } finally { globalThis.fetch = savedFetch; Date.now = savedNow; }
 });

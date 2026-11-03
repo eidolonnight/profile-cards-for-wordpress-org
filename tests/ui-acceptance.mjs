@@ -61,9 +61,9 @@ export async function selectPalette(page, name) {
   await page.locator('#preset-' + name).click();
 }
 
-// A fresh builder must not spend WordPress.org capacity before someone submits.
-export async function assertInitialEmpty(page) {
-  await empty(page);
+// A fresh builder renders the bundled Matt snapshot without spending WordPress.org capacity.
+export async function assertInitialDemo(page) {
+  await ready(page);
   assert.equal(await page.title(), 'Profile Cards for WordPress.org');
   assert.equal(await page.locator('#page-title, .intro h1, [aria-labelledby~="page-title"]').count(), 0);
   assert.equal(await page.locator('.intro-copy').innerText(), 'Bring your WordPress.org profile with you. Make a contributor card, frame your avatar, or announce your next WordCamp.');
@@ -81,7 +81,7 @@ export async function assertInitialEmpty(page) {
   assert.equal(await page.locator('.intro .eyebrow, .privacy-note, #refresh, #try-profile, #download-json, #copy-builder').count(), 0);
   assert.equal(await page.locator('#username').inputValue(), '');
   assert.equal(await page.locator('#username').getAttribute('placeholder'), 'Your WordPress.org Username');
-  assert.match(await page.locator('#profile-form').innerText(), /normally cached for up to 15 minutes[\s\S]*Recently cached details may be used while WordPress\.org limits requests/);
+  assert.match(await page.locator('#profile-form').innerText(), /normally cached for up to 1 hour[\s\S]*Recently cached details may be used while WordPress\.org limits requests/);
   const actions = ['download-png', 'download-svg'];
   await assertDownloadOnlyActions(page);
   assert.deepEqual(await page.locator('#layout option:not([hidden])').evaluateAll(nodes => nodes.map(node => [node.value, node.textContent])), [
@@ -101,10 +101,16 @@ export async function assertInitialEmpty(page) {
   assert.deepEqual(await page.locator('#exports .primary').evaluateAll(nodes => nodes.map(node => node.id)), ['download-png']);
   assert.equal(await page.locator('#download-png').innerText(), 'Download PNG');
   assert.equal(await page.locator('#download-svg').innerText(), 'Download SVG');
-  assert.match(await page.locator('.result').innerText(), /A small card\. Your story\.[\s\S]*Enter a username to see your real profile here\./);
-  assert.equal(await page.locator('#profile-meta').isHidden(), true);
+  assert.equal(await page.locator('#exports').evaluate(el => el.disabled), false);
+  assert.equal(await page.locator('#card-preview').isHidden(), false);
+  assert.ok(await page.locator('#card-preview').evaluate(image => image.complete && image.naturalWidth > 0));
+  assert.equal(await page.locator('#profile-link').getAttribute('href'), 'https://profiles.wordpress.org/matt/');
+  assert.match(await page.locator('#status').innerText(), /Demo using a bundled snapshot of Matt’s profile[\s\S]*Bundled profile snapshot from 2026-11-03; no WordPress\.org request was made/);
+  assert.equal(await page.locator('#status-warning').innerText(), '');
   const resources = await page.evaluate(() => performance.getEntriesByType('resource').map(entry => new URL(entry.name).pathname));
   assert.deepEqual(resources.filter(path => ['/json', '/preview-data', '/card'].includes(path)), []);
+  assert.equal(resources.filter(path => path === '/matt-demo.js').length, 1);
+  assert.equal(resources.filter(path => path === '/matt-demo-avatar.jpg').length, 0);
 }
 
 // Validate real downloaded bytes against a fresh raster of the current preview.
@@ -179,7 +185,7 @@ export async function assertCleanupFailures(context, base) {
     // Only the outage is synthetic; recovery must fetch and render a real profile.
     await page.route('**/preview-data?username=matt&*', route => route.fulfill({ status: 502, contentType: 'application/json', body: JSON.stringify({ error: { message: 'Synthetic lookup outage for acceptance test.' } }) }));
     await page.goto(base, { waitUntil: 'networkidle' });
-    await empty(page);
+    await ready(page); assert.equal(await page.locator('#username').inputValue(), ''); assert.deepEqual(requests, []);
     await page.locator('#username').fill('matt'); await page.locator('#create-button').click();
     await page.waitForFunction(() => document.getElementById('status').dataset.kind === 'error');
     assert.match(await page.locator('#status').innerText(), /Synthetic lookup outage/);

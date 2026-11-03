@@ -52,6 +52,9 @@ test('bounded fetch maps missing, rate-limit, redirects and failed upstream', as
       return true;
     });
   }
+  await assert.rejects(() => boundedFetch('https://profiles.wordpress.org/example/', { fetcher: async () => new Response('limited', { status: 429, headers: { 'Retry-After': '7200' } }) }), error => {
+    assert.equal(error.code, 'upstream_busy'); assert.equal(error.retryAfterMs, 15 * 60 * 1000); return true;
+  });
 });
 test('bounded fetch rejects oversized streamed and declared bodies', async () => {
   await assert.rejects(() => boundedFetch('https://profiles.wordpress.org/example/', { maxBytes: 2, fetcher: async () => new Response('123') }), { code: 'upstream_too_large' });
@@ -66,6 +69,8 @@ test('profile fetch is fixed-origin, cached, coalesced and refresh-throttled', a
   await Promise.all([getProfile('cache-test', { fetcher, now }), getProfile('cache-test', { fetcher, now })]); assert.equal(calls, 1);
   await getProfile('cache-test', { fetcher, now: now + 1, refresh: true }); assert.equal(calls, 1);
   await getProfile('cache-test', { fetcher, now: now + 61000, refresh: true }); assert.equal(calls, 2);
+  await getProfile('cache-test', { fetcher, now: now + 15 * 60 * 1000 }); assert.equal(calls, 2);
+  await getProfile('cache-test', { fetcher, now: now + 62 * 60 * 1000 }); assert.equal(calls, 3);
 });
 test('avatar embeds only bounded raster data, not arbitrary SVG', async () => {
   const avatar = `https://secure.gravatar.com/avatar/${'b'.repeat(64)}`;
@@ -168,15 +173,45 @@ test('profile throttling serves a bounded stale full-profile cache before degrad
     return calls.length === 1 ? htmlResponse('stale-profile-test') : new Response('limited', { status: 429, headers: { 'Retry-After': '60' } });
   };
   const fresh = await getProfile('stale-profile-test', { now, fetcher });
-  const stale = await getProfile('stale-profile-test', { now: now + 900001, fetcher });
+  const stale = await getProfile('stale-profile-test', { now: now + 3600001, fetcher });
   assert.equal(fresh.name, 'Ada & Example');
   assert.equal(fresh.stale, undefined);
   assert.equal(stale.name, fresh.name);
   assert.equal(stale.fetchedAt, fresh.fetchedAt);
   assert.equal(stale.stale, true);
   assert.equal(stale.partial, undefined);
-  assert.equal(profileMaxAgeMs(stale, now + 900001), 300000);
+  assert.equal(profileMaxAgeMs(stale, now + 3600001), 300000);
   assert.deepEqual(calls, ['https://profiles.wordpress.org/stale-profile-test/', 'https://profiles.wordpress.org/stale-profile-test/']);
+});
+
+test('stale full profiles expire at the absolute 24-hour boundary even after degraded recaching', async () => {
+  const calls = []; const now = 200_000_000; const window = 24 * 60 * 60 * 1000;
+  const fetcher = async url => {
+    calls.push(url);
+    if (url.endsWith('/wp-json/wporg/v1/users/stale-boundary-test')) return apiResponse('stale-boundary-test');
+    assert.equal(url, 'https://profiles.wordpress.org/stale-boundary-test/');
+    return calls.length === 1 ? htmlResponse('stale-boundary-test') : new Response('limited', { status: 429, headers: { 'Retry-After': '60' } });
+  };
+  const fresh = await getProfile('stale-boundary-test', { now, fetcher });
+  const firstStale = await getProfile('stale-boundary-test', { now: now + 3600001, fetcher });
+  assert.equal(firstStale.stale, true);
+  const nearBoundary = await getProfile('stale-boundary-test', { now: now + window - 1000, fetcher });
+  assert.equal(nearBoundary.stale, true);
+  assert.equal(profileMaxAgeMs(nearBoundary, now + window - 1000), 1000);
+  assert.equal(profileMaxAgeMs(nearBoundary, now + window), 0);
+  const atBoundary = await getProfile('stale-boundary-test', { now: now + window, fetcher });
+  assert.equal(atBoundary.stale, undefined);
+  assert.equal(atBoundary.partial, true);
+  assert.equal(atBoundary.name, 'Fallback Example');
+  assert.deepEqual(calls, [
+    'https://profiles.wordpress.org/stale-boundary-test/',
+    'https://profiles.wordpress.org/stale-boundary-test/',
+    'https://profiles.wordpress.org/stale-boundary-test/',
+    'https://profiles.wordpress.org/wp-json/wporg/v1/users/stale-boundary-test',
+  ]);
+  // Clear the synthetic cooldown so later tests can use their own clocks.
+  await getProfile('stale-boundary-reset', { now: now + window + 60001, fetcher: async () => htmlResponse('stale-boundary-reset') });
+  assert.equal(fresh.fetchedAt, firstStale.fetchedAt);
 });
 
 test('expired partial data is refreshed from the basic endpoint instead of entering the stale full-profile window', async () => {

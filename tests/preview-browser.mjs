@@ -63,8 +63,8 @@ try {
     }
   }
   assert.equal(report.equality.length, 18);
-  assert.deepEqual(traffic.filter(path => path.startsWith('/preview-data?')).map(path => new URL(path, base).searchParams.get('size')), ['320', '1024']);
-  await check('18 valid real-profile SVGs exactly equal canonical /card; warm changes make zero requests; photo variants loaded once each');
+  assert.deepEqual(traffic.filter(path => path.startsWith('/preview-data?')).map(path => new URL(path, base).searchParams.get('size')), ['all']);
+  await check('18 valid real-profile SVGs exactly equal canonical /card; one lookup preloads both photo variants; warm changes make zero requests');
   await page.locator('#layout').selectOption('profile'); await ready(page);
   const beforeRapid = traffic.length;
   await page.evaluate(() => {
@@ -81,18 +81,21 @@ try {
   await check('rapid changes preserve the last selection and canonical renderer parity with one module/font download per page');
   await page.close();
 
-  // Force a zero remaining TTL on a real response; no clock or latency guessing.
+  // A zero remaining worker TTL still stays local until another explicit lookup.
   const expiry = await context.newPage(), expiryTraffic = requests(expiry); let inputCount = 0;
   await expiry.route('**/preview-data?*', async route => {
     const original = await route.fetch(); const data = await original.json(); inputCount++;
-    if (inputCount === 1) data.maxAgeMs = 0;
+    data.maxAgeMs = 0;
     await route.fulfill({ response: original, json: data });
   });
-  await fresh(expiry); await ready(expiry); assert.equal(inputCount, 2);
-  await selectPalette(expiry, 'dark'); await ready(expiry); assert.equal(inputCount, 2);
-  await selectPalette(expiry, 'light'); await ready(expiry); assert.equal(inputCount, 2);
+  await fresh(expiry); await ready(expiry); assert.equal(inputCount, 1);
+  await selectPalette(expiry, 'dark'); await ready(expiry); assert.equal(inputCount, 1);
+  await selectPalette(expiry, 'light'); await ready(expiry); assert.equal(inputCount, 1);
+  for (const layout of ['profile', 'square', 'classic', 'avatar', 'announcement']) {
+    await expiry.locator('#layout').selectOption(layout); await ready(expiry); assert.equal(inputCount, 1);
+  }
   assert.equal(expiryTraffic.filter(path => path.startsWith('/card?')).length, 0);
-  await expiry.close(); await check('controlled TTL expiry revalidates inputs once, then resumes network-free rendering');
+  await expiry.close(); await check('zero worker freshness still keeps every passive page change local after one explicit request');
 
   const race = await context.newPage(), raceTraffic = requests(race);
   const held = deferred(), release = deferred(); let intercepted = false;
@@ -148,18 +151,19 @@ try {
 
   const invalid = await context.newPage(), invalidTraffic = requests(invalid);
   let mode = 'unauthorized';
-  const actual = await context.request.get(base + '/preview-data?username=eidolonnight&size=320');
+  const actual = await context.request.get(base + '/preview-data?username=eidolonnight&size=all');
   assert.equal(actual.status(), 200); const valid = await actual.json();
   await invalid.route('**/preview-data?*', async route => {
     if (mode === 'unauthorized') return route.fulfill({ status: 403, contentType: 'application/json', body: JSON.stringify({ error: { message: 'Test access denied' } }) });
     const data = structuredClone(valid);
     if (mode === 'wrong-user') data.profile.userName = 'wrong-user';
-    if (mode === 'unsafe-photo') data.avatar.data = 'https://untrusted.invalid/photo.png';
-    if (mode === 'unbounded-expiry') data.maxAgeMs = 900001;
+    if (mode === 'unsafe-photo') data.avatars[0].data = 'https://untrusted.invalid/photo.png';
+    if (mode === 'unbounded-expiry') data.maxAgeMs = 3600001;
+    if (mode === 'oversized-response') return route.fulfill({ status: 200, contentType: 'application/json', body: ' '.repeat(4 * 1024 * 1024 + 1) });
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) });
   });
   await invalid.goto(base + '/create?username=eidolonnight&layout=profile');
-  for (const test of ['unauthorized', 'wrong-user', 'unsafe-photo', 'unbounded-expiry']) {
+  for (const test of ['unauthorized', 'wrong-user', 'unsafe-photo', 'unbounded-expiry', 'oversized-response']) {
     mode = test; await invalid.locator('#create-button').click();
     await invalid.waitForFunction(() => document.getElementById('status').dataset.kind === 'error');
     assert.equal(await invalid.locator('#exports').evaluate(el => el.disabled), true);
@@ -167,7 +171,33 @@ try {
   }
   assert.equal(invalidTraffic.filter(path => path.startsWith('/card?')).length, 0);
   await invalid.unroute('**/preview-data?*'); await invalid.locator('#create-button').click(); await ready(invalid);
-  await invalid.close(); await check('authorization failure, wrong profile, unsafe image and unbounded TTL fail closed and recover on retry');
+  await invalid.close(); await check('authorization failure, wrong profile, unsafe image, unbounded TTL and oversized declared input fail closed and recover on retry');
+
+  const streamed = await context.newPage(), streamedTraffic = requests(streamed);
+  await streamed.goto(base + '/create?username=eidolonnight&layout=profile');
+  await streamed.evaluate(() => {
+    const realFetch = window.fetch.bind(window);
+    window.__previewStream = { produced: 0, canceled: false };
+    window.fetch = (input, init) => {
+      if (new URL(input, location.href).pathname !== '/preview-data') return realFetch(input, init);
+      const body = new ReadableStream({
+        pull(controller) {
+          window.__previewStream.produced += 64 * 1024;
+          controller.enqueue(new Uint8Array(64 * 1024).fill(32));
+          if (window.__previewStream.produced >= 6 * 1024 * 1024) controller.close();
+        },
+        cancel() { window.__previewStream.canceled = true; },
+      });
+      return Promise.resolve(new Response(body, { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    };
+  });
+  await streamed.locator('#create-button').click();
+  await streamed.waitForFunction(() => document.getElementById('status').dataset.kind === 'error');
+  const streamState = await streamed.evaluate(() => window.__previewStream);
+  assert.equal(streamState.canceled, true); assert.ok(streamState.produced < 6 * 1024 * 1024);
+  assert.equal(await streamed.locator('#exports').evaluate(el => el.disabled), true);
+  assert.equal(streamedTraffic.filter(path => path.startsWith('/card?')).length, 0);
+  await streamed.close(); await check('headerless oversized preview input is canceled by the incremental byte limit before the full stream is read');
   assert.deepEqual(report.errors, []); assert.deepEqual(report.externalOrigins, []);
   assert.equal(report.equality.length, 21); report.pass = true;
 } catch (error) { report.pass = false; report.failure = error.stack; process.exitCode = 1; }

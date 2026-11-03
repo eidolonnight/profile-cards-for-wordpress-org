@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { assertDownloadOnlyActions, cardURLFromControls, selectPalette, assertInitialEmpty, assertDownloadedPNG } from './ui-acceptance.mjs';
+import { assertDownloadOnlyActions, cardURLFromControls, selectPalette, assertInitialDemo, assertDownloadedPNG } from './ui-acceptance.mjs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { parseHTML } from 'linkedom/worker';
@@ -70,7 +70,7 @@ try {
   const eventsResponse = await context.request.get(base + '/events'); assert.equal(eventsResponse.status(), 200);
   const catalog = await eventsResponse.json(); assert.equal(catalog.events.length, 4); assert.equal(catalog.roles.length, 5);
   assert.deepEqual(catalog.events.map(event => event.id), ['asia-2027', 'europe-2027', 'us-2027', 'india-2027']);
-  await page.goto(base, { waitUntil: 'networkidle' }); await assertInitialEmpty(page); check('fresh builder stays idle until a username is submitted'); await page.locator('#username').fill('eidolonnight'); await page.locator('#create-button').click(); await ready();
+  await page.goto(base, { waitUntil: 'networkidle' }); await assertInitialDemo(page); check('fresh builder renders the bundled Matt demo without profile API requests'); await page.locator('#username').fill('eidolonnight'); await page.locator('#create-button').click(); await ready();
   const source = await context.request.get(base + '/json?username=eidolonnight'); assert.equal(source.status(), 200); const profile = await source.json();
   assert.equal(profile.userName, 'eidolonnight'); assert.ok(profile.name); report.profile = { username: profile.userName, fetchedAt: profile.fetchedAt };
   const expectedMatrix = [];

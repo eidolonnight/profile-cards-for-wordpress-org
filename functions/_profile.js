@@ -2,14 +2,17 @@ import { parseHTML } from 'linkedom/worker';
 import { ProfileError } from '../shared/options.js';
 export { ProfileError, DEFAULT_COLORS, queryOptions } from '../shared/options.js';
 
-const TTL = 15 * 60 * 1000;
+const TTL = 60 * 60 * 1000;
 const DEGRADED_TTL = 5 * 60 * 1000;
 const STALE_WINDOW = 24 * 60 * 60 * 1000;
 const DEFAULT_RETRY_DELAY = 60 * 1000;
+const MAX_RETRY_DELAY = 15 * 60 * 1000;
 // Relative freshness for preview clients; use the same timestamp and TTL as the cache.
 export function profileMaxAgeMs(profile, now = Date.now()) {
-  if (profile?.stale === true) return DEGRADED_TTL;
   const fetchedAt = Date.parse(profile.fetchedAt);
+  if (profile?.stale === true) return Number.isFinite(fetchedAt)
+    ? Math.max(0, Math.min(DEGRADED_TTL, Math.floor(fetchedAt + STALE_WINDOW - now)))
+    : 0;
   const ttl = profile?.partial === true ? DEGRADED_TTL : TTL;
   return Number.isFinite(fetchedAt) ? Math.max(0, Math.min(ttl, Math.floor(fetchedAt + ttl - now))) : 0;
 }
@@ -73,6 +76,7 @@ function socialAccounts(accounts) {
     if (account?.verified !== true || typeof key !== 'string' || key.trim() !== key || !SOCIAL_KEY.test(key) || EXCLUDED_SOCIAL.has(key) || !url || seen.has(key)) continue;
     seen.add(key);
     social.push({ key, label: textField(account.display, 240) || key, url });
+    if (social.length >= 64) break;
   }
   return social;
 }
@@ -106,10 +110,12 @@ function headerData(document, header, profileUrl, memberSince) {
   }
   const teams = [];
   for (const row of header.querySelectorAll('.wp-p2-chip-row')) {
+    if (teams.length >= 64) break;
     if (clean(row.querySelector('.wp-p2-chip-label')?.textContent).toLowerCase() !== 'teams') continue;
     for (const chip of row.querySelectorAll('.wp-p2-chip')) {
       const team = textField(chip.textContent, 80);
       if (team && !teams.includes(team)) teams.push(team);
+      if (teams.length >= 64) break;
     }
   }
   const userId = document.querySelector('[data-tl-pager][data-user]')?.getAttribute('data-user');
@@ -136,7 +142,7 @@ function parseProfileData(html, username, now) {
   if (!name || name.length > 500) throw new ProfileError('profile_unreadable', 'WordPress.org returned a page we could not read. Please try again later.', 502);
   const identity = document.querySelector('meta[property="profile:username"]')?.getAttribute('content');
   if (identity && identity !== username) throw new ProfileError('profile_mismatch', 'WordPress.org returned a different profile. Please check the username.', 502);
-  const memberSince = clean(document.querySelector('#user-member-since strong')?.textContent || header.querySelector('.wp-p2-joined')?.textContent?.replace(/^joined\s+/i, ''));
+  const memberSince = textField(document.querySelector('#user-member-since strong')?.textContent || header.querySelector('.wp-p2-joined')?.textContent?.replace(/^joined\s+/i, ''), 120);
   let nodes = [...document.querySelectorAll('.wp-p2-badges-block .medal')];
   const legacy = nodes.length === 0;
   if (legacy) nodes = [...document.querySelectorAll('#user-badges .badge, #user-badges .item')];
@@ -147,7 +153,7 @@ function parseProfileData(html, username, now) {
     if (!name || seen.has(name)) continue;
     if (name.length > 240 || badges.length >= 200) throw new ProfileError('profile_unreadable', 'This profile has an unsupported badge format.', 502);
     seen.add(name);
-    const classes = `${node.className || ''} ${node.querySelector('.mi')?.className || ''}`.split(/\s+/).filter(c => /^(?:badge-[a-z0-9-]+|dashicons(?:-[a-z0-9-]+)?)$/.test(c));
+    const classes = `${node.className || ''} ${node.querySelector('.mi')?.className || ''}`.split(/\s+/).filter(c => c.length <= 80 && /^(?:badge-[a-z0-9-]+|dashicons(?:-[a-z0-9-]+)?)$/.test(c)).slice(0, 8);
     badges.push({ class: [...new Set(classes)].join(' '), name });
   }
   const profileUrl = `https://profiles.wordpress.org/${username}/`;
@@ -199,7 +205,7 @@ function retryAfterMs(value, now = Date.now()) {
   if (typeof value !== 'string' || !value.trim()) return null;
   const text = value.trim();
   const delay = /^[0-9]+$/.test(text) ? Number(text) * 1000 : Date.parse(text) - now;
-  return Number.isFinite(delay) && delay > 0 ? Math.min(TTL, Math.ceil(delay)) : null;
+  return Number.isFinite(delay) && delay > 0 ? Math.min(MAX_RETRY_DELAY, Math.ceil(delay)) : null;
 }
 
 export async function boundedFetch(url, { fetcher = globalThis.fetch, maxBytes = 1024 * 1024, accept = 'text/html', timeout = 10000 } = {}) {
@@ -242,7 +248,7 @@ function remember(map, key, value, limit) { map.delete(key); map.set(key, value)
 function staleProfile(hit, username, now) {
   if (hit?.profile?.partial === true) return null;
   const fetchedAt = Date.parse(hit?.profile?.fetchedAt);
-  if (!Number.isFinite(fetchedAt) || now - fetchedAt > STALE_WINDOW) return null;
+  if (!Number.isFinite(fetchedAt) || now - fetchedAt >= STALE_WINDOW) return null;
   const profile = { ...hit.profile, stale: true };
   remember(cache, username, { time: now, profile }, 128);
   return profile;
@@ -281,7 +287,14 @@ export async function getProfile(username, { refresh = false, fetcher = globalTh
   // must not erase a newer limit learned after that work began.
   if (now >= profileBackoffUntil) profileBackoffUntil = 0;
   if (now >= basicBackoffUntil) basicBackoffUntil = 0;
-  const hit = cache.get(username);
+  let hit = cache.get(username);
+  // A degraded cache entry can have been stored near the end of the complete
+  // profile's 24-hour stale window. Never let its five-minute cache age extend
+  // the underlying profile beyond that absolute boundary.
+  if (hit?.profile?.stale === true && profileMaxAgeMs(hit.profile, now) === 0) {
+    cache.delete(username);
+    hit = null;
+  }
   // A refresh bypasses the ordinary TTL, but not the minimum interval protecting the upstream.
   const cacheTtl = hit?.profile?.partial === true || hit?.profile?.stale === true ? DEGRADED_TTL : TTL;
   if (hit && now - hit.time < (refresh ? 60000 : cacheTtl)) return hit.profile;

@@ -22,7 +22,7 @@
   const state = {
     profile: null, username: '', profileVersion: 0, renderVersion: 0,
     profileController: null, renderController: null, timer: null,
-    svg: null, previewURL: null, ready: false,
+    svg: null, previewURL: null, ready: false, demo: false, demoSnapshotAt: '',
     layout: 'announcement', layoutChoices: {}, customColorKeys: new Set(),
     selectionUsername: '', omitTeams: new Set(),
     catalog: null, catalogPromise: null, catalogFailed: false,
@@ -35,7 +35,9 @@
 
   function status(message, kind = '') {
     $('status-message').textContent = message;
-    $('cache-note').textContent = '';
+    $('cache-note').textContent = state.demo && state.demoSnapshotAt
+      ? ` Bundled profile snapshot from ${state.demoSnapshotAt.slice(0, 10)}; no WordPress.org request was made.`
+      : '';
     $('status-warning').textContent = '';
     $('status').dataset.kind = kind;
   }
@@ -86,6 +88,8 @@
     state.profileController = null;
     state.profile = null;
     state.username = '';
+    state.demo = false;
+    state.demoSnapshotAt = '';
     if (state.inputRequest) state.inputRequest.controller.abort();
     state.inputRequest = null;
     state.previewInputs = null;
@@ -416,6 +420,33 @@
     return `The server could not complete this request (HTTP ${response.status}). Try again.`;
   }
 
+  async function boundedResponseText(response, maxBytes) {
+    const declared = Number(response.headers.get('content-length'));
+    if (Number.isFinite(declared) && declared > maxBytes) throw new Error('The preview data is too large.');
+    if (!response.body) {
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (bytes.byteLength > maxBytes) throw new Error('The preview data is too large.');
+      return new TextDecoder().decode(bytes);
+    }
+    const reader = response.body.getReader();
+    const chunks = []; let total = 0;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        total += value.byteLength;
+        if (total > maxBytes) throw new Error('The preview data is too large.');
+        chunks.push(value);
+      }
+    } catch (error) {
+      await reader.cancel().catch(() => {});
+      throw error;
+    }
+    const bytes = new Uint8Array(total); let offset = 0;
+    for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+    return new TextDecoder().decode(bytes);
+  }
+
   function friendlyError(error) {
     if (error.name === 'AbortError') return 'The request timed out. Please try again.';
     if (error instanceof TypeError) return 'Could not connect. Check your connection and private preview access, then try again.';
@@ -459,21 +490,55 @@
     });
   }
 
+
+  async function loadDemo() {
+    const profileVersion = state.profileVersion;
+    $('preview-stage').setAttribute('aria-busy', 'true');
+    placeholder('Loading the Matt demo…', 'Using a bundled profile snapshot without contacting WordPress.org.');
+    status('Loading the bundled Matt demo…');
+    try {
+      const { MATT_DEMO } = await import('/matt-demo.js');
+      if (!validProfile(MATT_DEMO?.profile) || MATT_DEMO.profile.userName !== 'matt'
+        || !Number.isFinite(Date.parse(MATT_DEMO.snapshotAt)) || MATT_DEMO.profile.fetchedAt !== MATT_DEMO.snapshotAt
+        || MATT_DEMO.avatarPath !== null) throw new Error('The bundled demo profile is invalid.');
+      if (profileVersion !== state.profileVersion || $('username').value || location.search) return;
+      const avatar = (size) => ({ size, data: null, status: 'initials' });
+      const fingerprint = JSON.stringify(MATT_DEMO.profile);
+      state.demo = true;
+      state.demoSnapshotAt = MATT_DEMO.snapshotAt;
+      state.username = 'matt';
+      state.profile = MATT_DEMO.profile;
+      state.previewInputs = {
+        profile: MATT_DEMO.profile,
+        fingerprint,
+        expires: Number.POSITIVE_INFINITY,
+        avatars: new Map([[320, avatar(320)], [1024, avatar(1024)]]),
+      };
+      populateIndividualOptions();
+      scheduleRender(0);
+    } catch (error) {
+      if (profileVersion !== state.profileVersion) return;
+      clearCard();
+      $('preview-stage').setAttribute('aria-busy', 'false');
+      placeholder('The demo is unavailable.', 'Enter your username to create a card from your live public profile.');
+      status(friendlyError(error), 'error');
+    }
+  }
+
   async function previewInputs(size) {
     const cached = state.previewInputs;
-    if (cached && performance.now() < cached.expires && (size === 0 || cached.avatars.has(size))) return cached;
-    // Option changes share an in-flight input request. A different photo size or
-    // username cancels it; only the current profile's two raster sizes are kept.
-    if (state.inputRequest?.size === size) return state.inputRequest.promise;
-    if (state.inputRequest) state.inputRequest.controller.abort();
+    if (cached && (size === 0 || cached.avatars.has(size))) return cached;
+    // The first lookup loads the complete profile and both bounded photo variants.
+    // Every format change then reuses one page-memory snapshot without another request.
+    if (state.inputRequest) return state.inputRequest.promise;
     const controller = new AbortController();
-    const request = { size, controller, promise: null };
+    const request = { controller, promise: null };
     const profileVersion = state.profileVersion, username = state.username;
-    const started = performance.now();
+
     const timeout = setTimeout(() => controller.abort(), 30000);
     state.inputRequest = request;
     request.promise = (async () => {
-      const response = await fetch(urlFor('/preview-data', new URLSearchParams({ username, size: String(size) })), {
+      const response = await fetch(urlFor('/preview-data', new URLSearchParams({ username, size: 'all' })), {
         signal: controller.signal, credentials: 'same-origin', headers: { Accept: 'application/json' },
       });
       if ([404, 405, 501].includes(response.status)) {
@@ -483,27 +548,27 @@
       }
       if (!response.ok) throw new Error(await errorMessage(response));
       if (!response.headers.get('content-type')?.toLowerCase().includes('application/json')) throw new Error('The server returned unexpected preview data.');
-      const text = await response.text();
-      if (text.length > 4 * 1024 * 1024) throw new Error('The preview data is too large.');
+      const text = await boundedResponseText(response, 4 * 1024 * 1024);
       const data = JSON.parse(text);
-      const avatar = data?.avatar;
       if (!validProfile(data?.profile) || data.profile.userName !== username || !Number.isFinite(Date.parse(data.profile.fetchedAt))
-        || !Number.isInteger(data.maxAgeMs) || data.maxAgeMs < 0 || data.maxAgeMs > 900000
-        || avatar?.size !== size || !['embedded', 'initials', 'hidden'].includes(avatar.status)
-        || (avatar.data !== null && (typeof avatar.data !== 'string' || !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(avatar.data)))
-        || (size === 0 ? avatar.data !== null || avatar.status !== 'hidden' : avatar.status !== (avatar.data ? 'embedded' : 'initials'))) {
+        || !Number.isInteger(data.maxAgeMs) || data.maxAgeMs < 0 || data.maxAgeMs > 3600000
+        || !Array.isArray(data.avatars) || data.avatars.length !== 2) {
         throw new Error('The server returned unexpected preview data.');
       }
+      const avatars = new Map();
+      for (const avatar of data.avatars) {
+        if (![320, 1024].includes(avatar?.size) || avatars.has(avatar.size)
+          || !['embedded', 'initials'].includes(avatar.status)
+          || (avatar.data !== null && (typeof avatar.data !== 'string' || !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(avatar.data)))
+          || avatar.status !== (avatar.data ? 'embedded' : 'initials')) {
+          throw new Error('The server returned unexpected preview data.');
+        }
+        avatars.set(avatar.size, avatar);
+      }
+      if (!avatars.has(320) || !avatars.has(1024)) throw new Error('The server returned unexpected preview data.');
       if (controller.signal.aborted || profileVersion !== state.profileVersion) throw new DOMException('Request aborted', 'AbortError');
-      // Different snapshots must never mix photo sizes or outlive profile TTL.
       const fingerprint = JSON.stringify(data.profile);
-      const previous = state.previewInputs;
-      const reuse = previous?.fingerprint === fingerprint && performance.now() < previous.expires;
-      const inputs = {
-        profile: data.profile, fingerprint, expires: reuse ? Math.min(previous.expires, started + data.maxAgeMs) : started + data.maxAgeMs,
-        avatars: reuse ? new Map(previous.avatars) : new Map(),
-      };
-      if (size) inputs.avatars.set(size, avatar);
+      const inputs = { profile: data.profile, fingerprint, avatars };
       state.previewInputs = inputs;
       return inputs;
     })().finally(() => {
@@ -534,6 +599,7 @@
         state.previewUnavailable = true;
       }
     }
+    if (state.demo) throw new Error('Browser rendering is required for the bundled demo.');
     const response = await fetch(urlFor('/card', params), {
       signal: controller.signal, credentials: 'same-origin', headers: { Accept: 'image/svg+xml' },
     });
@@ -700,16 +766,19 @@
       $('profile-meta').hidden = false;
       state.ready = true;
       $('exports').disabled = false;
-      status('Your image is ready to download.');
+      status(state.demo
+        ? 'Demo using a bundled snapshot of Matt’s profile. Enter your username to make your own. Your image is ready to download.'
+        : 'Your image is ready to download.');
       const fetchedAt = typeof state.profile.fetchedAt === 'string' ? new Date(state.profile.fetchedAt) : null;
-      $('cache-note').textContent = fetchedAt && Number.isFinite(fetchedAt.getTime())
+      $('cache-note').textContent = state.demo ? $('cache-note').textContent
+        : fetchedAt && Number.isFinite(fetchedAt.getTime())
         ? ` Profile fetched ${fetchedAt.toLocaleString()}.`
         : ' Fetch time unavailable.';
       const warnings = [];
       if (state.profile.stale && state.profile.partial) warnings.push('WordPress.org is limiting full profile requests, so recently cached basic details are shown.');
       else if (state.profile.stale) warnings.push('WordPress.org is limiting requests, so recently cached profile details are shown.');
       else if (state.profile.partial) warnings.push('WordPress.org is limiting full profile requests, so only basic profile details are shown.');
-      if (avatarStatus === 'initials') warnings.push('The avatar could not be loaded, so initials are shown.');
+      if (avatarStatus === 'initials' && !state.demo) warnings.push('The avatar could not be loaded, so initials are shown.');
       $('status-warning').textContent = warnings.length ? ` ${warnings.join(' ')}` : '';
     } catch (error) {
       if (version !== state.renderVersion) return;
@@ -892,4 +961,5 @@
   addEventListener('pagehide', () => { resetBackground(); cancelRender(); });
   addEventListener('pageshow', event => { if (event.persisted) scheduleRender(); });
   restoreSettings();
+  if (!location.search) loadDemo();
 })();

@@ -68,7 +68,7 @@ test('avatar cache evicts at 32 entries and expires at the existing TTL', async 
   await get(url(332),fetcher,{size:1024}); assert.equal(calls,33);
   await get(url(300),fetcher,{size:1024}); assert.equal(calls,34);
   const original = Date.now;
-  try { const now=original(); Date.now=() => now + 15*60*1000 + 1; await get(url(300),fetcher,{size:1024}); assert.equal(calls,35); } finally {Date.now=original;}
+  try { const now=original(); Date.now=() => now + 60*60*1000 + 1; await get(url(300),fetcher,{size:1024}); assert.equal(calls,35); } finally {Date.now=original;}
 });
 
 test('encoded data URI length rather than raw bytes bounds cache to 8 MiB across sizes', async () => {
