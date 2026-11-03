@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { cardURLFromControls, selectPalette, assertInitialDemo, assertDownloadedPNG } from './ui-acceptance.mjs';
+import { cardURLFromControls, selectPalette, assertInitialEmpty, assertDownloadedPNG } from './ui-acceptance.mjs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { parseHTML } from 'linkedom/worker';
@@ -29,7 +29,8 @@ try {
   }
   check('malformed team omissions are rejected during builder restoration');
   assert.equal((await page.goto(base, { waitUntil: 'networkidle' })).status(), 200);
-  await assertInitialDemo(page); check('live matt demo is labeled while username stays blank');
+  await assertInitialEmpty(page); check('fresh builder stays idle until a username is submitted');
+  await page.locator('#layout').selectOption('profile');
   assert.equal(await page.locator('#layout').inputValue(), 'profile');
   assert.equal(await page.locator('#layout option:checked').innerText(), 'Landscape banner');
   assert.equal(await page.locator('#display-settings > legend').count(), 1);
@@ -38,7 +39,7 @@ try {
   assert.equal(await page.locator('#header').count(), 0);
   assert.equal(await page.locator('.about details').count(), 0);
   assert.match(await page.locator('.about').innerText(), /processed in your browser, never uploaded or saved/);
-  const profileControls = ['avatar', 'name', 'handle', 'jobTitle', 'organization', 'location', 'joined', 'teams', 'badges', 'link'];
+  const profileControls = ['avatar', 'name', 'handle', 'jobTitle', 'organization', 'location', 'joined', 'teams', 'badges', 'badgeNames', 'social', 'link'];
   for (const id of profileControls) assert.equal(await page.locator('.profile-content-options #' + id).isChecked(), true, id);
   assert.equal(await page.locator('#username').inputValue(), '');
   await page.locator('#username').fill('eidolonnight'); await page.locator('#create-button').click(); await ready();
@@ -46,14 +47,15 @@ try {
   assert.equal(profile.userName, 'eidolonnight'); assert.ok(profile.jobTitle && profile.organization && profile.location && profile.joined && profile.userId);
   assert.ok(profile.teams.length);
   const initialSVG = await preview(); const initial = parseHTML(initialSVG).document;
+  const initialSocialCount = initial.querySelectorAll('[data-social]').length;
   assert.equal(initial.querySelector('svg').getAttribute('data-layout'), 'profile');
-  assert.equal(initial.querySelectorAll('[data-team]').length, profile.teams.length); assert.equal(initial.querySelectorAll('[data-social]').length, 0);
+  assert.equal(initial.querySelectorAll('[data-team]').length, profile.teams.length); assert.ok(initialSocialCount > 0);
   assert.equal(initial.querySelector('[data-field="jobLine"]').textContent, profile.jobTitle + ' at ' + profile.organization);
   assert.equal(initial.querySelector('[data-field="location"]').textContent, profile.location);
-  assert.equal(initial.querySelectorAll('[data-field="userId"],[data-field="website"],[data-field="github"],[data-field="slack"],[data-field="social"]').length, 0);
-  assert.equal(initial.querySelectorAll('a').length, 1); assert.equal(initial.querySelector('a').getAttribute('href'), 'https://profiles.wordpress.org/eidolonnight/');
+  assert.equal(initial.querySelectorAll('[data-field="userId"],[data-field="website"],[data-field="github"],[data-field="slack"]').length, 0);
+  assert.equal(initial.querySelectorAll('a').length, initialSocialCount + 1); assert.equal(initial.querySelector('a').getAttribute('href'), 'https://profiles.wp.org/eidolonnight/');
   assert.equal(initial.querySelectorAll('[data-field="badges"]').length, profile.badges.length);
-  assert.equal(await page.locator('#userId,#website,#github,#slack,#social,#social-items,#linkColor').count(), 0);
+  assert.equal(await page.locator('#userId,#website,#github,#slack,#social-items,#linkColor').count(), 0); assert.equal(await page.locator('#social').isVisible(), true);
   assert.equal(await page.locator('#link').isVisible(), true); assert.equal(await page.locator('#link').isDisabled(), false);
   const avatar = initial.querySelector('[data-field="avatar"] image'); assert.ok(avatar, 'live profile photo must be embedded');
   assert.ok(Number(avatar.getAttribute('width')) > 0); assert.equal(avatar.getAttribute('width'), avatar.getAttribute('height'));
@@ -96,16 +98,16 @@ try {
   await page.locator('#jobTitle').uncheck(); assert.equal(parseHTML(await preview()).document.querySelector('[data-field="jobLine"]').textContent, profile.organization); await page.locator('#jobTitle').check(); await ready();
   await page.locator('#organization').uncheck(); assert.equal(parseHTML(await preview()).document.querySelector('[data-field="jobLine"]').textContent, profile.jobTitle); await page.locator('#organization').check(); await ready();
   await page.locator('#jobTitle').uncheck(); await page.locator('#organization').uncheck(); assert.equal(parseHTML(await preview()).document.querySelector('[data-field="jobLine"]'), null); await page.locator('#jobTitle').check(); await page.locator('#organization').check(); await ready();
-  await page.locator('#badges').uncheck(); assert.equal(parseHTML(await preview()).document.querySelector('[data-field="badges"]'), null);
+  await page.locator('#badgeNames').uncheck(); await page.locator('#badges').uncheck(); assert.equal(parseHTML(await preview()).document.querySelector('[data-field="badges"]'), null);
   await page.locator('#badges').check();
   const badgeDoc = parseHTML(await preview()).document;
   assert.equal(badgeDoc.querySelectorAll('[data-field="badges"]').length, profile.badges.length);
   assert.equal(badgeDoc.querySelectorAll('[data-field="badges"] text').length, 0);
   assert.deepEqual([...badgeDoc.querySelectorAll('[data-field="badges"] title')].map(el => el.textContent), profile.badges.map(badge => badge.name));
-  await page.locator('#link').uncheck(); assert.equal(parseHTML(await preview()).document.querySelector('a'), null);
+  await page.locator('#link').uncheck(); assert.equal(parseHTML(await preview()).document.querySelector('[data-field="link"]'), null);
   await page.locator('#link').check();
   const linked = parseHTML(await preview()).document;
-  assert.equal(linked.querySelectorAll('a').length, 1); assert.equal(linked.querySelector('a').getAttribute('href'), 'https://profiles.wordpress.org/eidolonnight/');
+  assert.equal(linked.querySelectorAll('a').length, initialSocialCount + 1); assert.equal(linked.querySelector('a').getAttribute('href'), 'https://profiles.wp.org/eidolonnight/');
   assert.equal(linked.querySelector('[data-field="link"] text').getAttribute('fill'), '#50575E');
   await download('#download-png', 'landscape-icons-link.png');
   await download('#download-svg', 'landscape-icons-link.svg');
@@ -120,6 +122,7 @@ try {
   assert.equal(new Set(report.badgeGeometry.map(b => Math.round(b.originY))).size, 1);
   assert.ok(report.badgeGeometry.every((b,i,a) => b.width <= 48 && b.height <= 48 && (i===0 || b.x >= a[i-1].x+a[i-1].width)));
   await iconsPage.close();
+  await page.locator('#badgeNames').check(); await ready();
   await page.locator('#link').uncheck(); await page.locator('#badges').uncheck(); assert.equal(parseHTML(await preview()).document.querySelector('[data-field="badges"]'), null);
   for (const id of ['jobTitle','organization','handle','location','joined','teams']) await page.locator('#'+id).uncheck();
   const compact = parseHTML(await preview()).document; assert.ok(Number(compact.querySelector('[data-field="avatar"] image').getAttribute('width')) < initialAvatarSize, 'avatar shrinks when visible text is reduced');
@@ -144,25 +147,25 @@ try {
   const omittedTeam = await teamInput.inputValue(); await teamInput.uncheck(); assert.equal(parseHTML(await preview()).document.querySelectorAll('[data-team]').length, profile.teams.length - 1);
   await selectPalette(page, 'dark'); await ready();
   const builderURL = new URL(await cardURLFromControls(page)); builderURL.pathname = '/create'; const parameters = builderURL.searchParams;
-  assert.equal(parameters.get('layout'), 'profile'); assert.ok(parameters.get('omitTeams').split(',').includes(omittedTeam)); assert.equal(parameters.get('foreground'), '191E23'); assert.equal(parameters.get('link'),'false'); for (const key of ['userId', 'website', 'github', 'slack', 'social', 'omitSocial', 'linkColor']) assert.equal(parameters.has(key), false, key);
-  await page.goto(builderURL.href); await page.locator('#create-button').click(); const restored = parseHTML(await preview()).document; assert.equal(restored.querySelectorAll('[data-team]').length, profile.teams.length - 1); assert.equal(restored.querySelectorAll('[data-social]').length, 0); assert.equal(restored.querySelector('svg > rect').getAttribute('fill'), '#191E23');
-  await page.locator('#create-button').click(); const lookedUpAgain = parseHTML(await preview()).document; assert.equal(lookedUpAgain.querySelectorAll('[data-team]').length, profile.teams.length - 1); assert.equal(lookedUpAgain.querySelectorAll('[data-social]').length, 0);
+  assert.equal(parameters.get('layout'), 'profile'); assert.ok(parameters.get('omitTeams').split(',').includes(omittedTeam)); assert.equal(parameters.get('foreground'), '191E23'); assert.equal(parameters.get('link'),'false'); assert.equal(parameters.get('social'), 'true'); for (const key of ['userId', 'website', 'github', 'slack', 'omitSocial', 'linkColor']) assert.equal(parameters.has(key), false, key);
+  await page.goto(builderURL.href); await page.locator('#create-button').click(); const restored = parseHTML(await preview()).document; assert.equal(restored.querySelectorAll('[data-team]').length, profile.teams.length - 1); assert.equal(restored.querySelectorAll('[data-social]').length, initialSocialCount); assert.equal(restored.querySelector('svg > rect').getAttribute('fill'), '#191E23');
+  await page.locator('#create-button').click(); const lookedUpAgain = parseHTML(await preview()).document; assert.equal(lookedUpAgain.querySelectorAll('[data-team]').length, profile.teams.length - 1); assert.equal(lookedUpAgain.querySelectorAll('[data-social]').length, initialSocialCount);
   check('team omissions and dark theme survive explicit builder URLs without removed fields');
   for (const layout of ['square', 'classic']) {
     await page.locator('#layout').selectOption(layout); await ready();
     const url = await cardURLFromControls(page);
-    assert.equal(new URL(url).searchParams.has('omitTeams'), false);
+    assert.equal(new URL(url).searchParams.has('omitTeams'), layout === 'square');
     const response = await context.request.get(url); assert.equal(response.status(), 200);
     assert.equal(createHash('sha256').update(await preview()).digest('hex'), createHash('sha256').update(await response.text()).digest('hex'), `${layout} preview must match the canonical URL without Landscape omissions`);
   }
   await page.locator('#layout').selectOption('profile');
   assert.equal(parseHTML(await preview()).document.querySelectorAll('[data-team]').length, profile.teams.length - 1);
-  check('team omissions stay local to Landscape and survive switching away and back');
+  check('team omissions apply to both modern formats, stay out of Classic, and survive switching away and back');
   await page.screenshot({ path: evidence + '/desktop-dark.png', fullPage: true }); await download('#download-png', 'header-dark.png');
   for (const width of [768, 390, 320]) { await page.setViewportSize({ width, height: 844 }); await overflow(); const c = await page.locator('.controls').boundingBox(), r = await page.locator('.result').boundingBox(); assert.ok(r.y >= c.y + c.height); assert.ok(Math.abs(r.x - c.x) < 1); report.layout.push({ width, columns: 1 }); await page.screenshot({ path: evidence + `/mobile-${width}.png`, fullPage: true }); }
   check('two columns at 1440/1024px, mobile stacking at 768/390/320px, with no overflow');
   if (process.env.AXE_PATH) { await page.addScriptTag({ path: process.env.AXE_PATH }); const results = await page.evaluate(() => axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa'] } })); report.accessibility = results.violations.map(v => ({ id: v.id, help: v.help, nodes: v.nodes.map(n => n.target) })); assert.deepEqual(report.accessibility, []); check('mobile axe A/AA accessibility audit'); }
-  for (const id of profileControls) await page.locator('#' + id).uncheck();
+  for (const id of ['badgeNames', ...profileControls.filter(key => key !== 'badgeNames')]) { const control = page.locator('#' + id); if (await control.isEnabled()) await control.uncheck(); }
   await page.waitForFunction(() => document.getElementById('exports').disabled && document.getElementById('empty-title').textContent === 'Nothing to show on this card.');
   assert.equal(await page.locator('#card-preview').isHidden(), true); assert.equal(await page.locator('#card-preview').getAttribute('src'), null);
   assert.match(await page.locator('#status').innerText(), /All available card content is hidden/);
@@ -170,25 +173,25 @@ try {
   await page.locator('#link').check();
   const linkOnly = parseHTML(await preview()).document;
   assert.equal(linkOnly.querySelectorAll('[data-field]').length, 1); assert.equal(linkOnly.querySelectorAll('[data-field="link"] a').length, 1);
-  assert.equal(linkOnly.querySelector('a').getAttribute('href'), 'https://profiles.wordpress.org/eidolonnight/');
+  assert.equal(linkOnly.querySelector('a').getAttribute('href'), 'https://profiles.wp.org/eidolonnight/');
   for (const id of profileControls) await page.locator('#' + id).check(); await ready();
   check('individually hiding all Landscape content clears stale preview and exports; link alone recovers, then every control can be restored');
-  const emptyResponse = await context.request.get(base + '/card?username=eidolonnight&layout=profile&header=false'); assert.equal(emptyResponse.status(), 200); assert.equal(parseHTML(await emptyResponse.text()).document.querySelectorAll('[data-field]').length, 0);
-  const apiLinkResponse = await context.request.get(base + '/card?username=eidolonnight&layout=profile&header=false&link=true'); assert.equal(apiLinkResponse.status(), 200);
+  const emptyResponse = await context.request.get(base + '/card?username=eidolonnight&layout=profile&header=false&badges=false&social=false&link=false'); assert.equal(emptyResponse.status(), 200); assert.equal(parseHTML(await emptyResponse.text()).document.querySelectorAll('[data-field]').length, 0);
+  const apiLinkResponse = await context.request.get(base + '/card?username=eidolonnight&layout=profile&header=false&badges=false&social=false&link=true'); assert.equal(apiLinkResponse.status(), 200);
   const apiLink = parseHTML(await apiLinkResponse.text()).document;
   assert.equal(apiLink.querySelectorAll('[data-field]').length, 1); assert.ok(apiLink.querySelector('[data-field="link"] a'));
   const apiDefaultResponse = await context.request.get(base + '/card?username=eidolonnight&layout=profile'); assert.equal(apiDefaultResponse.status(), 200);
   const apiDefault = parseHTML(await apiDefaultResponse.text()).document;
-  assert.ok(apiDefault.querySelector('[data-field="name"]')); assert.equal(apiDefault.querySelectorAll('[data-field="badges"],[data-field="link"]').length, 0);
-  check('direct /card retains header=false, independent link=true, and legacy badge/link defaults');
+  assert.ok(apiDefault.querySelector('[data-field="name"]')); assert.equal(apiDefault.querySelectorAll('[data-field="badges"]').length, profile.badges.length); assert.ok(apiDefault.querySelector('[data-field="link"]')); assert.equal(apiDefault.querySelectorAll('[data-social]').length, initialSocialCount);
+  check('direct /card retains header=false, independent link=true, and current modern defaults');
   const old = new URL('/create?username=eidolonnight&layout=profile&header=false&link=true&userId=true&website=true&github=true&slack=true&social=true&omitSocial=twitter&linkColor=3858E9', base);
   await page.goto(old.href); await page.locator('#create-button').click();
   const legacy = parseHTML(await preview()).document;
   for (const id of profileControls) assert.equal(await page.locator('#' + id).isChecked(), true, `${id} legacy builder default`);
   for (const field of ['avatar', 'name', 'handle', 'link']) assert.ok(legacy.querySelector(`[data-field="${field}"]`), field);
   assert.equal(legacy.querySelectorAll('[data-field="badges"]').length, profile.badges.length);
-  assert.equal(legacy.querySelectorAll('[data-field="userId"],[data-field="website"],[data-field="github"],[data-field="slack"],[data-field="social"]').length, 0);
-  check('legacy builder header=false no longer hides profile fields; old social/ID flags still cannot restore removed fields');
+  assert.equal(legacy.querySelectorAll('[data-field="userId"],[data-field="website"],[data-field="github"],[data-field="slack"]').length, 0); assert.equal(legacy.querySelectorAll('[data-social]').length, initialSocialCount);
+  check('legacy builder header=false no longer hides profile fields; removed ID fields are ignored while valid social defaults remain');
   for (const query of ['header=invalid', 'header=', 'header=FALSE', 'header=false&header=false', 'header=true&header=false']) {
     await page.goto(base + '/create?username=eidolonnight&layout=profile&' + query);
     assert.match(await page.locator('#status').innerText(), /Some URL settings were invalid/, query);

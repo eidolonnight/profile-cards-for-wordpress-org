@@ -57,10 +57,12 @@ try {
   const documentResponse = await page.goto(origin);
   assert.equal(documentResponse.status(), 200);
   if (report.version) assert.equal(documentResponse.headers()['x-spacefast-version'], report.version);
-  await ready();
   for (const width of [1440, 320]) await capture('default', width);
   await page.setViewportSize({ width: 1440, height: 1050 });
   if (!baseline) {
+    assert.equal(await page.locator('#exports').evaluate(element => element.disabled), true);
+    assert.equal(await page.locator('#card-preview').isHidden(), true);
+    assert.deepEqual(await page.evaluate(() => performance.getEntriesByType('resource').map(entry => new URL(entry.name).pathname).filter(path => ['/json', '/preview-data', '/card'].includes(path))), []);
     assert.equal(await page.locator('#layout').inputValue(), 'announcement');
     assert.deepEqual(await page.locator('#layout option:not([hidden])').evaluateAll(options => options.map(option => option.textContent)), ['WordCamp social card', 'WordCamp avatar frame', 'Vertical card', 'Landscape banner']);
     assert.deepEqual(await page.locator('.section-heading .step').allTextContents(), ['00', '01']);
@@ -68,6 +70,7 @@ try {
       assert.equal(await page.locator('#' + id).isChecked(), true, `${id} required default`);
       assert.equal(await page.locator('#' + id).isDisabled(), true, `${id} required control`);
     }
+    await page.locator('#username').fill('eidolonnight'); await page.locator('#create-button').click(); await ready();
     await page.locator('#layout').selectOption('profile'); await ready();
     assert.doesNotMatch(await page.locator('.controls').innerText(), /Color palette/i);
     assert.deepEqual(await page.locator('.controls #layout, .controls #event-settings, .controls #profile-form, .controls #display-settings, .controls #customize-colors, .controls .background-settings').evaluateAll(nodes => nodes.map(node => node.id || node.className)), ['profile-form', 'layout', 'event-settings', 'display-settings', 'customize-colors', 'background-settings']);

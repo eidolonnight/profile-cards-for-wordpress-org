@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
-import { cardURLFromControls } from './ui-acceptance.mjs';
+import { cardURLFromControls, assertInitialEmpty } from './ui-acceptance.mjs';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const origin = process.env.TEST_ORIGIN || 'http://127.0.0.1:4214';
 const evidence = process.env.EVIDENCE_DIR;
@@ -138,7 +138,7 @@ const capture = async (page, label, width) => {
 try {
   const context = await browser.newContext({ acceptDownloads: true, viewport: { width: 1440, height: 1000 }, colorScheme: 'light' }); watch(context);
   const page = await context.newPage();
-  await navigate(page); await ready(page);
+  await navigate(page); await assertInitialEmpty(page);
   assert.equal(await page.locator('link[rel=canonical]').getAttribute('href'), 'https://profiles.wapuu.news/');
   assert.equal(await page.locator('.controls input, .controls select').first().getAttribute('id'), 'username');
   assert.equal(await page.locator('#customize-colors').evaluate(n => n.open), false);
@@ -152,6 +152,7 @@ try {
   assert.equal(await page.locator('#site-theme').evaluate(n => n.tagName), 'BUTTON');
   assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'system');
   for (const id of modern) assert.equal(await page.locator('#' + id).isChecked(), true, 'Fresh default ' + id);
+  await page.locator('#username').fill('eidolonnight'); await page.locator('#create-button').click(); await ready(page);
   await page.locator('#site-theme').click();
   const dark = await page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor);
   assert.notEqual(dark, light);
@@ -159,7 +160,7 @@ try {
   await page.locator('#site-theme').click();
   assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'system', 'Returning to OS palette restores automatic appearance');
   assert.equal(await svgText(page), cardBeforeTheme, 'Site appearance must not recolor the card');
-  await page.locator('#site-theme').click(); await page.reload(); await ready(page);
+  await page.locator('#site-theme').click(); await page.reload(); await page.locator('#username').fill('eidolonnight'); await page.locator('#create-button').click(); await ready(page);
   assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'dark');
   assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor), dark);
   await page.locator('#site-theme').click();
@@ -167,7 +168,6 @@ try {
   await page.emulateMedia({ colorScheme: 'light' }); assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor), light);
   await page.emulateMedia({ colorScheme: 'dark' }); assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor), dark);
   report.checks.push('System-aware light/dark site appearance, explicit override persistence, independent card colors, username-first order, collapsed colors/background, grouped privacy/participation notices and canonical domain');
-  await page.locator('#username').fill('eidolonnight'); await page.locator('#create-button').click(); await ready(page);
   const profileResponse = await context.request.get(origin + '/json?username=eidolonnight'); assert.equal(profileResponse.status(), 200); const profile = await profileResponse.json();
   const layoutFields = {};
   for (const layout of ['profile', 'square']) {
@@ -270,9 +270,9 @@ try {
   }
   const blocked = await browser.newContext({ colorScheme: 'dark' }); watch(blocked);
   await blocked.addInitScript(() => { Object.defineProperty(window, 'localStorage', { get() { throw new DOMException('Blocked', 'SecurityError'); } }); });
-  const bp = await blocked.newPage(); await navigate(bp, '/create'); await ready(bp); await bp.locator('#site-theme').click();
+  const bp = await blocked.newPage(); await navigate(bp, '/create'); await assertInitialEmpty(bp); await bp.locator('#username').fill('eidolonnight'); await bp.locator('#create-button').click(); await ready(bp); await bp.locator('#site-theme').click();
   assert.equal(await bp.evaluate(() => getComputedStyle(document.documentElement).backgroundColor), light); await blocked.close();
-  const noThemeScript = await browser.newContext({ colorScheme: 'dark' }); watch(noThemeScript); await noThemeScript.route(origin + '/theme.js*', r => r.abort()); const tp = await noThemeScript.newPage(); await navigate(tp); await ready(tp);
+  const noThemeScript = await browser.newContext({ colorScheme: 'dark' }); watch(noThemeScript); await noThemeScript.route(origin + '/theme.js*', r => r.abort()); const tp = await noThemeScript.newPage(); await navigate(tp); await assertInitialEmpty(tp); await tp.locator('#username').fill('eidolonnight'); await tp.locator('#create-button').click(); await ready(tp);
   assert.equal(await tp.evaluate(() => getComputedStyle(document.documentElement).backgroundColor), dark); assert.equal(await tp.locator('#site-theme').isVisible(), false); await noThemeScript.close();
   report.checks.push('Both routes have no-JavaScript OS-theme fallback, blocked storage remains functional, and blocked theme enhancement preserves CSS and the builder');
   assert.deepEqual(report.errors, []); assert.deepEqual([...new Set(report.externalOrigins)], []);

@@ -118,20 +118,20 @@ test('profile upstream failures remain bounded with useful private errors', asyn
   const saved = globalThis.fetch;
   const cases = [
     [() => new Response('', { status: 404 }), 404, 'profile_not_found'],
-    [() => new Response('', { status: 429 }), 503, 'upstream_busy'],
     [() => new Response('', { status: 302, headers: { Location: 'https://evil.test' } }), 502, 'upstream_unavailable'],
     [() => new Response('', { status: 500 }), 502, 'upstream_unavailable'],
     [() => new Response('bad', { headers: { 'Content-Type': 'text/plain' } }), 502, 'profile_unreadable'],
     [() => htmlResponse('<h1>Maintenance</h1>'), 502, 'profile_unreadable'],
     [() => new Response('x', { headers: { 'Content-Length': '1048577', 'Content-Type': 'text/html' } }), 502, 'upstream_too_large'],
     [() => htmlResponse('x'.repeat(1048577)), 502, 'upstream_too_large'],
-    [() => { throw new Error('network failed'); }, 502, 'upstream_unavailable']
+    [() => { throw new Error('network failed'); }, 502, 'upstream_unavailable'],
+    [() => new Response('', { status: 429 }), 503, 'upstream_busy']
   ];
   try {
     for (const [index, [response, status, code]] of cases.entries()) {
       let calls = 0; globalThis.fetch = async () => { calls++; return response(); };
       const result = await GET(request(`username=preview-upstream-${index}&size=0`));
-      assert.equal(result.status, status); headers(result); assert.equal((await result.json()).error.code, code); assert.equal(calls, 1);
+      assert.equal(result.status, status); headers(result); assert.equal((await result.json()).error.code, code); assert.equal(calls, code === 'upstream_busy' ? 2 : 1);
     }
   } finally { globalThis.fetch = saved; }
 });

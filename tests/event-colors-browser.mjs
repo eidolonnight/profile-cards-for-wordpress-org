@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { parseHTML } from 'linkedom/worker';
-import { cardURLFromControls, assertDownloadedPNG } from './ui-acceptance.mjs';
+import { cardURLFromControls, assertDownloadedPNG, assertInitialEmpty } from './ui-acceptance.mjs';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const origin = process.env.TEST_ORIGIN || 'http://127.0.0.1:4216';
 const evidence = process.env.EVIDENCE_DIR;
@@ -42,7 +42,7 @@ try {
   assert.equal(catalog.events.find(e => e.id === 'us-2027').location, '');
   const response = await page.goto(origin); assert.equal(response.status(), 200);
   if (process.env.EXPECTED_VERSION) assert.equal(response.headers()['x-spacefast-version'], process.env.EXPECTED_VERSION);
-  await ready(); assert.equal(await page.locator('#preset-event').isHidden(), true);
+  await assertInitialEmpty(page); assert.equal(await page.locator('#preset-event').isHidden(), true);
   await page.locator('#username').fill('eidolonnight'); await page.locator('#create-button').click(); await ready();
   for (const layout of ['avatar', 'announcement']) {
     await page.locator('#layout').selectOption(layout); await ready();
@@ -95,11 +95,11 @@ try {
   await assertColors(Object.fromEntries(keys.map((k, i) => [k, light[i]])), 'automatic event colors do not leak into ordinary profile cards');
   assert.equal(await page.locator('#preset-event').isHidden(), true);
   record.checks.push('Individual overrides and manual presets persist; Event colors restores current source palette; ordinary profile defaults remain neutral');
-  await page.goto(origin + '/create?username=eidolonnight&layout=announcement&event=india-2027&headerColor=123456&name=false&header=false');
+  await page.goto(origin + '/create?username=eidolonnight&layout=announcement&event=india-2027&headerColor=123456&handle=false&header=false');
   await page.waitForFunction(() => document.getElementById('event').value === 'india-2027' && !document.getElementById('event-controls').disabled);
   const india = catalog.events.find(e => e.id === 'india-2027');
   await assertColors({ ...india.colors, headerColor: '123456' }, 'partial URL color overrides retain the other event defaults');
-  assert.equal(await page.locator('#name').isChecked(), false); assert.equal(await page.locator('#handle').isChecked(), true);
+  assert.equal(await page.locator('#name').isChecked(), true); assert.equal(await page.locator('#name').isDisabled(), true); assert.equal(await page.locator('#handle').isChecked(), false);
   assert.equal(await page.locator('#header').count(), 0);
   await page.locator('#create-button').click(); await ready();
   record.checks.push('URL restoration preserves explicit individual fields/colors without restoring the removed master switch');

@@ -3,16 +3,23 @@ import { ProfileError } from '../shared/options.js';
 export { ProfileError, DEFAULT_COLORS, queryOptions } from '../shared/options.js';
 
 const TTL = 15 * 60 * 1000;
+const DEGRADED_TTL = 5 * 60 * 1000;
+const STALE_WINDOW = 24 * 60 * 60 * 1000;
+const DEFAULT_RETRY_DELAY = 60 * 1000;
 // Relative freshness for preview clients; use the same timestamp and TTL as the cache.
 export function profileMaxAgeMs(profile, now = Date.now()) {
+  if (profile?.stale === true) return DEGRADED_TTL;
   const fetchedAt = Date.parse(profile.fetchedAt);
-  return Number.isFinite(fetchedAt) ? Math.max(0, Math.min(TTL, Math.floor(fetchedAt + TTL - now))) : 0;
+  const ttl = profile?.partial === true ? DEGRADED_TTL : TTL;
+  return Number.isFinite(fetchedAt) ? Math.max(0, Math.min(ttl, Math.floor(fetchedAt + ttl - now))) : 0;
 }
 const cache = new Map();
 const pending = new Map();
 const avatars = new Map();
 const avatarPending = new Map();
 let avatarEncodedBytes = 0;
+let profileBackoffUntil = 0;
+let basicBackoffUntil = 0;
 const AVATAR_CACHE_BYTES = 8 * 1024 * 1024;
 const USER = /^[a-z0-9][a-z0-9._-]{0,59}$/;
 const GRAVATAR = new Set(['secure.gravatar.com', 'www.gravatar.com', 'gravatar.com', '0.gravatar.com', '1.gravatar.com', '2.gravatar.com']);
@@ -149,8 +156,50 @@ function parseProfileData(html, username, now) {
   return { profile, gravatarHash: gravatar.hash };
 }
 
+function parseApiProfileData(data, username, now) {
+  if (!data || typeof data !== 'object' || data.slug !== username) throw new ProfileError('profile_mismatch', 'WordPress.org returned a different profile. Please check the username.', 502);
+  const name = textField(data.name);
+  if (!name) throw new ProfileError('profile_unreadable', 'WordPress.org returned profile data we could not read. Please try again later.', 502);
+  let avatar = null;
+  const candidate = data.avatar_urls?.['96'];
+  if (typeof candidate === 'string' && candidate.length <= 2048) {
+    const normalized = candidate.startsWith('//') ? `https:${candidate}` : candidate;
+    avatar = safeAvatar(normalized.replaceAll('&#038;', '&').replaceAll('&amp;', '&'));
+  }
+  const userId = Number.isSafeInteger(data.id) && data.id > 0 ? String(data.id) : null;
+  return {
+    userName: username,
+    name,
+    avatar,
+    memberSince: '',
+    badges: [],
+    profileUrl: `https://profiles.wordpress.org/${username}/`,
+    fetchedAt: new Date(now).toISOString(),
+    jobTitle: '',
+    organization: '',
+    jobLine: '',
+    location: '',
+    joined: '',
+    userId,
+    website: null,
+    github: null,
+    slack: '',
+    social: [],
+    socialUnavailable: true,
+    teams: [],
+    partial: true,
+  };
+}
+
 export function parseProfile(html, username, now = Date.now()) {
   return parseProfileData(html, username, now).profile;
+}
+
+function retryAfterMs(value, now = Date.now()) {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const text = value.trim();
+  const delay = /^[0-9]+$/.test(text) ? Number(text) * 1000 : Date.parse(text) - now;
+  return Number.isFinite(delay) && delay > 0 ? Math.min(TTL, Math.ceil(delay)) : null;
 }
 
 export async function boundedFetch(url, { fetcher = globalThis.fetch, maxBytes = 1024 * 1024, accept = 'text/html', timeout = 10000 } = {}) {
@@ -159,7 +208,11 @@ export async function boundedFetch(url, { fetcher = globalThis.fetch, maxBytes =
   try {
     const response = await fetcher(url, { redirect: 'manual', signal: controller.signal, headers: { Accept: accept } });
     if (response.status === 404) throw new ProfileError('profile_not_found', 'No public WordPress.org profile was found for that username.', 404);
-    if (response.status === 429) throw new ProfileError('upstream_busy', 'WordPress.org is limiting requests. Please try again later.', 503);
+    if (response.status === 429) {
+      const error = new ProfileError('upstream_busy', 'WordPress.org is limiting requests. Please try again later.', 503);
+      error.retryAfterMs = retryAfterMs(response.headers.get('retry-after'));
+      throw error;
+    }
     if (!response.ok) throw new ProfileError('upstream_unavailable', 'The public profile service is unavailable. Please try again later.', 502);
     if (Number(response.headers.get('content-length')) > maxBytes) throw new ProfileError('upstream_too_large', 'The upstream response is too large.', 502);
     const chunks = []; let length = 0;
@@ -186,15 +239,69 @@ export async function boundedFetch(url, { fetcher = globalThis.fetch, maxBytes =
 }
 
 function remember(map, key, value, limit) { map.delete(key); map.set(key, value); while (map.size > limit) map.delete(map.keys().next().value); }
+function staleProfile(hit, username, now) {
+  if (hit?.profile?.partial === true) return null;
+  const fetchedAt = Date.parse(hit?.profile?.fetchedAt);
+  if (!Number.isFinite(fetchedAt) || now - fetchedAt > STALE_WINDOW) return null;
+  const profile = { ...hit.profile, stale: true };
+  remember(cache, username, { time: now, profile }, 128);
+  return profile;
+}
+function applyProfileBackoff(error, now, includeBasic = false) {
+  if (!(error instanceof ProfileError) || error.code !== 'upstream_busy') return false;
+  const delay = error.retryAfterMs || DEFAULT_RETRY_DELAY;
+  profileBackoffUntil = Math.max(profileBackoffUntil, now + delay);
+  if (includeBasic) basicBackoffUntil = Math.max(basicBackoffUntil, now + delay);
+  error.retryAfterMs = Math.max(delay, profileBackoffUntil - now, basicBackoffUntil - now);
+  return true;
+}
+function cooldownError(now) {
+  const error = new ProfileError('upstream_busy', 'WordPress.org is limiting requests. Please try again later.', 503);
+  error.retryAfterMs = Math.max(1, profileBackoffUntil - now, basicBackoffUntil - now);
+  return error;
+}
+async function basicProfile(username, fetcher, now) {
+  const result = await boundedFetch(`https://profiles.wordpress.org/wp-json/wporg/v1/users/${encodeURIComponent(username)}`, { fetcher, maxBytes: 256 * 1024, accept: 'application/json' });
+  if (result.type !== 'application/json') throw new ProfileError('profile_unreadable', 'WordPress.org returned unexpected profile data. Please try again later.', 502);
+  let data;
+  try { data = JSON.parse(new TextDecoder().decode(result.body)); }
+  catch { throw new ProfileError('profile_unreadable', 'WordPress.org returned profile data we could not read. Please try again later.', 502); }
+  const profile = parseApiProfileData(data, username, now);
+  remember(cache, username, { time: now, profile }, 128);
+  return profile;
+}
+async function fallbackProfile(username, fetcher, now) {
+  if (now < basicBackoffUntil) throw cooldownError(now);
+  try { return await basicProfile(username, fetcher, now); }
+  catch (error) { applyProfileBackoff(error, now, true); throw error; }
+}
 export async function getProfile(username, { refresh = false, fetcher = globalThis.fetch, now = Date.now() } = {}) {
   if (!USER.test(username)) throw new ProfileError('invalid_username', 'Invalid WordPress.org profile username.');
+  // Expired cooldowns clear when a new lookup starts; successful concurrent work
+  // must not erase a newer limit learned after that work began.
+  if (now >= profileBackoffUntil) profileBackoffUntil = 0;
+  if (now >= basicBackoffUntil) basicBackoffUntil = 0;
   const hit = cache.get(username);
   // A refresh bypasses the ordinary TTL, but not the minimum interval protecting the upstream.
-  if (hit && now - hit.time < (refresh ? 60000 : TTL)) return hit.profile;
+  const cacheTtl = hit?.profile?.partial === true || hit?.profile?.stale === true ? DEGRADED_TTL : TTL;
+  if (hit && now - hit.time < (refresh ? 60000 : cacheTtl)) return hit.profile;
   if (pending.has(username)) return pending.get(username);
   if (pending.size >= 8) throw new ProfileError('busy', 'The card service is busy. Please try again shortly.', 503);
   const promise = (async () => {
-    const result = await boundedFetch(`https://profiles.wordpress.org/${encodeURIComponent(username)}/`, { fetcher });
+    if (now < profileBackoffUntil) {
+      const stale = staleProfile(hit, username, now);
+      if (stale) return stale;
+      return fallbackProfile(username, fetcher, now);
+    }
+    let result;
+    try {
+      result = await boundedFetch(`https://profiles.wordpress.org/${encodeURIComponent(username)}/`, { fetcher });
+    } catch (error) {
+      if (!applyProfileBackoff(error, now)) throw error;
+      const stale = staleProfile(hit, username, now);
+      if (stale) return stale;
+      return fallbackProfile(username, fetcher, now);
+    }
     if (!['text/html', 'application/xhtml+xml'].includes(result.type)) throw new ProfileError('profile_unreadable', 'WordPress.org returned an unexpected response.', 502);
     const { profile, gravatarHash } = parseProfileData(new TextDecoder().decode(result.body), username, now);
     if (gravatarHash) {
@@ -264,5 +371,7 @@ export async function getAvatarData(avatar, fetcher = globalThis.fetch, { size =
 export const apiHeaders = { 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'X-Robots-Tag': 'noindex, nofollow', 'Referrer-Policy': 'no-referrer' };
 export function errorResponse(error) {
   const known = error instanceof ProfileError;
-  return Response.json({ error: { code: known ? error.code : 'internal_error', message: known ? error.message : 'The card could not be generated. Please try again.' } }, { status: known ? error.status : 500, headers: apiHeaders });
+  const headers = new Headers(apiHeaders);
+  if (known && Number.isFinite(error.retryAfterMs) && error.retryAfterMs > 0) headers.set('Retry-After', String(Math.max(1, Math.ceil(error.retryAfterMs / 1000))));
+  return Response.json({ error: { code: known ? error.code : 'internal_error', message: known ? error.message : 'The card could not be generated. Please try again.' } }, { status: known ? error.status : 500, headers });
 }

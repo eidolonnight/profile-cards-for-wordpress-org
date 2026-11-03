@@ -89,6 +89,12 @@ test('the builder no longer has a hidden master-switch dependency', async () => 
   assert.doesNotMatch(app, /What’s on your (?:card|image)/);
 });
 
+test('fresh builder sessions stay idle until a visitor submits a username', async () => {
+  const app = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(app, /submitProfile\(null,\s*true\)/);
+  assert.doesNotMatch(app, /const username = demo \? 'matt'/);
+});
+
 test('developer disclosure is removed without losing the privacy information or license links', () => {
   assert.doesNotMatch(document.documentElement.textContent, /For developers & curious contributors|returns profile data|returns a self-contained SVG/);
   assert.equal(document.querySelector('.about details'), null);

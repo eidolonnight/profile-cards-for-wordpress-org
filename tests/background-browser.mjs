@@ -41,7 +41,7 @@ const ready = page => page.waitForFunction(() => {
   const image = document.getElementById('card-preview');
   return !document.getElementById('exports').disabled && !image.hidden && image.complete && image.naturalWidth > 0;
 }, null, { timeout: 45000 });
-const fresh = async page => { await page.goto(origin + '/'); await ready(page); await page.locator('#customize-colors summary').click(); };
+const fresh = async page => { await page.goto(origin + '/'); await page.locator('#username').fill('eidolonnight'); await page.locator('#create-button').click(); await ready(page); await page.locator('#layout').selectOption('profile'); await ready(page); await page.locator('#customize-colors summary').click(); };
 const svgSource = page => page.locator('#card-preview').evaluate(image => fetch(image.src).then(r => r.text()));
 const setControl = async (page, id, value) => {
   await page.locator('#background-' + id).evaluate((el, value) => { el.value = String(value); el.dispatchEvent(new Event('input', { bubbles: true })); }, value);
@@ -264,11 +264,13 @@ try {
   }
   await check('Keyboard sliders, desktop/390px/320px geometry, touch targets and configured axe audits verified');
   assert.deepEqual(await page.evaluate(() => __storageWrites), []);
-  const cleanURL = page.url(); await page.reload(); await ready(page);
-  assert.equal(page.url(), cleanURL); assert.equal(await backgroundImage(page), null);
+  const cleanURL = page.url(); await page.reload();
+  assert.equal(page.url(), cleanURL); assert.equal(await page.locator('#exports').evaluate(element => element.disabled), true); assert.equal(await page.locator('#card-preview').isHidden(), true);
   assert.equal(await page.locator('#background-controls').isHidden(), true);
   assert.equal(await page.locator('#background-file').inputValue(), '');
   assert.deepEqual(await page.evaluate(() => ({ writes: __storageWrites, local: localStorage.length, session: sessionStorage.length })), { writes: [], local: 0, session: 0 });
+  await page.locator('#username').fill('eidolonnight'); await page.locator('#create-button').click(); await ready(page); await page.locator('#layout').selectOption('profile'); await ready(page);
+  assert.equal(await backgroundImage(page), null);
   await check('Reload clears the custom image; no browser storage writes or image/query state persisted');
 
   // Preserve server fallback without forwarding any custom image to it.

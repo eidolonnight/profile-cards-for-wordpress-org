@@ -61,9 +61,9 @@ export async function selectPalette(page, name) {
   await page.locator('#preset-' + name).click();
 }
 
-// No fixtures: validate the automatic demo against the actual local/live API.
-export async function assertInitialDemo(page) {
-  await ready(page);
+// A fresh builder must not spend WordPress.org capacity before someone submits.
+export async function assertInitialEmpty(page) {
+  await empty(page);
   assert.equal(await page.title(), 'Profile Cards for WordPress.org');
   assert.equal(await page.locator('#page-title, .intro h1, [aria-labelledby~="page-title"]').count(), 0);
   assert.equal(await page.locator('.intro-copy').innerText(), 'Bring your WordPress.org profile with you. Make a contributor card, frame your avatar, or announce your next WordCamp.');
@@ -81,7 +81,7 @@ export async function assertInitialDemo(page) {
   assert.equal(await page.locator('.intro .eyebrow, .privacy-note, #refresh, #try-profile, #download-json, #copy-builder').count(), 0);
   assert.equal(await page.locator('#username').inputValue(), '');
   assert.equal(await page.locator('#username').getAttribute('placeholder'), 'Your WordPress.org Username');
-  assert.ok((await page.locator('#profile-form').innerText()).includes('Profile data may be cached for up to 15 minutes.'));
+  assert.match(await page.locator('#profile-form').innerText(), /normally cached for up to 15 minutes[\s\S]*Recently cached details may be used while WordPress\.org limits requests/);
   const actions = ['download-png', 'download-svg'];
   await assertDownloadOnlyActions(page);
   assert.deepEqual(await page.locator('#layout option:not([hidden])').evaluateAll(nodes => nodes.map(node => [node.value, node.textContent])), [
@@ -101,19 +101,10 @@ export async function assertInitialDemo(page) {
   assert.deepEqual(await page.locator('#exports .primary').evaluateAll(nodes => nodes.map(node => node.id)), ['download-png']);
   assert.equal(await page.locator('#download-png').innerText(), 'Download PNG');
   assert.equal(await page.locator('#download-svg').innerText(), 'Download SVG');
-  assert.match(await page.locator('.result').innerText(), /demo|example/i);
-  assert.equal(await page.locator('#profile-link').getAttribute('href'), 'https://profiles.wordpress.org/matt/');
-  const resources = await page.evaluate(() => performance.getEntriesByType('resource').map(entry => entry.name));
-  const lookups = resources.map(value => new URL(value)).filter(url => url.pathname === '/json');
-  assert.ok(lookups.some(url => url.searchParams.get('username') === 'matt'), 'demo must fetch matt, not use a hardcoded profile');
-  for (const url of lookups) assert.equal(url.searchParams.has('refresh'), false);
-  const response = await page.context().request.get(new URL('/json?username=matt', page.url()).href);
-  assert.equal(response.status(), 200);
-  const profile = await response.json();
-  assert.equal(profile.userName, 'matt');
-  const svg = await page.locator('#card-preview').evaluate(image => fetch(image.src).then(response => response.text()));
-  assert.ok(svg.includes(profile.name.replaceAll('&', '&amp;').replaceAll('<', '&lt;')));
-  assert.ok(svg.includes('@matt'));
+  assert.match(await page.locator('.result').innerText(), /A small card\. Your story\.[\s\S]*Enter a username to see your real profile here\./);
+  assert.equal(await page.locator('#profile-meta').isHidden(), true);
+  const resources = await page.evaluate(() => performance.getEntriesByType('resource').map(entry => new URL(entry.name).pathname));
+  assert.deepEqual(resources.filter(path => ['/json', '/preview-data', '/card'].includes(path)), []);
 }
 
 // Validate real downloaded bytes against a fresh raster of the current preview.
@@ -174,24 +165,27 @@ export async function assertCleanupFailures(context, base) {
     await page.locator('#create-button').click(); await ready(page);
     await page.locator('#create-button').click(); await ready(page);
     assert.equal(await page.locator('#profile-link').getAttribute('href'), 'https://profiles.wordpress.org/eidolonnight/');
-    assert.ok(requests.some(url => url.pathname === '/json'));
+    assert.equal(requests.filter(url => url.pathname === '/preview-data').length, 2, 'each submission should issue exactly one preview-data request');
+    assert.equal(requests.some(url => url.pathname === '/json' || url.pathname === '/card'), false, 'each normal lookup should use one preview-data request');
     for (const url of requests) assert.equal(url.searchParams.has('refresh'), false, url.href);
 
     for (const query of ['username=', 'username=Matt', 'username=matt&username=eidolonnight', 'layout=bogus', 'username=eidolonnight&foreground=oops', 'layout=avatar&event=unknown-2027']) {
       requests.length = 0;
       await page.goto(base + '/create?' + query, { waitUntil: 'networkidle' });
       await page.waitForFunction(() => document.getElementById('status').textContent.includes('Some URL settings were invalid'));
-      await empty(page); assert.deepEqual(requests, [], 'malformed shared settings must not silently load a demo');
+      await empty(page); assert.deepEqual(requests, [], 'malformed shared settings must not issue a profile request');
     }
 
     // Only the outage is synthetic; recovery must fetch and render a real profile.
-    await page.route('**/json?username=matt', route => route.fulfill({ status: 502, contentType: 'application/json', body: JSON.stringify({ error: { message: 'Synthetic demo outage for acceptance test.' } }) }));
-    await page.goto(base);
-    await page.waitForFunction(() => document.getElementById('status').dataset.kind === 'error');
-    assert.match(await page.locator('#status').innerText(), /Synthetic demo outage/);
-    assert.equal(await page.locator('#username').inputValue(), '');
+    await page.route('**/preview-data?username=matt&*', route => route.fulfill({ status: 502, contentType: 'application/json', body: JSON.stringify({ error: { message: 'Synthetic lookup outage for acceptance test.' } }) }));
+    await page.goto(base, { waitUntil: 'networkidle' });
     await empty(page);
-    await page.unroute('**/json?username=matt');
+    await page.locator('#username').fill('matt'); await page.locator('#create-button').click();
+    await page.waitForFunction(() => document.getElementById('status').dataset.kind === 'error');
+    assert.match(await page.locator('#status').innerText(), /Synthetic lookup outage/);
+    assert.equal(await page.locator('#username').inputValue(), 'matt');
+    await empty(page);
+    await page.unroute('**/preview-data?username=matt&*');
     await page.locator('#username').fill('eidolonnight'); await page.locator('#create-button').click(); await ready(page);
 
     await assertDownloadOnlyActions(page);

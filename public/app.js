@@ -22,7 +22,7 @@
   const state = {
     profile: null, username: '', profileVersion: 0, renderVersion: 0,
     profileController: null, renderController: null, timer: null,
-    svg: null, previewURL: null, ready: false, demo: false,
+    svg: null, previewURL: null, ready: false,
     layout: 'announcement', layoutChoices: {}, customColorKeys: new Set(),
     selectionUsername: '', omitTeams: new Set(),
     catalog: null, catalogPromise: null, catalogFailed: false,
@@ -86,7 +86,6 @@
     state.profileController = null;
     state.profile = null;
     state.username = '';
-    state.demo = false;
     if (state.inputRequest) state.inputRequest.controller.abort();
     state.inputRequest = null;
     state.previewInputs = null;
@@ -545,11 +544,15 @@
     return { svg: await response.blob(), avatarStatus: response.headers.get('x-profile-avatar') };
   }
 
-  async function submitProfile(event, demo = false) {
+  function previewAvatarSize() {
+    return $('avatar').checked ? (isSocial() ? 1024 : 320) : 0;
+  }
+
+  async function submitProfile(event) {
     if (event) event.preventDefault();
-    if (!demo && !$('profile-form').reportValidity()) return;
+    if (!$('profile-form').reportValidity()) return;
     state.restoreInvalid = false; // Explicitly creating again acknowledges the visible restored choices.
-    const username = demo ? 'matt' : $('username').value;
+    const username = $('username').value;
     // Do not silently fix malformed identifiers supplied by a shared builder URL.
     if (!/^[a-z0-9][a-z0-9._-]{0,59}$/.test(username)) {
       invalidateProfile();
@@ -558,7 +561,7 @@
       return;
     }
     invalidateProfile();
-    state.demo = demo;
+    state.username = username;
     const version = state.profileVersion;
     const controller = new AbortController();
     state.profileController = controller;
@@ -567,19 +570,24 @@
     $('preview-stage').setAttribute('aria-busy', 'true');
     placeholder('Finding your profile…', 'Looking up public WordPress.org profile data.');
     status(`Looking up ${username}…`);
-    const params = new URLSearchParams({ username });
     // Start loading in parallel; cardSource reports any error when rendering.
     loadRenderer().catch(() => {});
     try {
-      const response = await fetch(urlFor('/json', params), {
-        signal: controller.signal, credentials: 'same-origin', headers: { Accept: 'application/json' },
-      });
-      if (!response.ok) throw new Error(await errorMessage(response));
-      const profile = await response.json();
-      if (!validProfile(profile)) throw new Error('The server returned an unexpected profile response. Try again.');
+      let profile;
+      try {
+        profile = (await abortable(previewInputs(previewAvatarSize()), controller.signal)).profile;
+      } catch (error) {
+        if (!error.previewUnavailable) throw error;
+        state.previewUnavailable = true;
+        const response = await fetch(urlFor('/json', new URLSearchParams({ username })), {
+          signal: controller.signal, credentials: 'same-origin', headers: { Accept: 'application/json' },
+        });
+        if (!response.ok) throw new Error(await errorMessage(response));
+        profile = await response.json();
+        if (!validProfile(profile)) throw new Error('The server returned an unexpected profile response. Try again.');
+      }
       if (version !== state.profileVersion) return;
       state.profile = profile;
-      state.username = username;
       populateIndividualOptions();
       scheduleRender(0);
     } catch (error) {
@@ -692,14 +700,17 @@
       $('profile-meta').hidden = false;
       state.ready = true;
       $('exports').disabled = false;
-      const message = 'Your image is ready to download.';
-      status(state.demo ? `Demo using matt’s profile. Enter your username to make your own. ${message}` : message);
+      status('Your image is ready to download.');
       const fetchedAt = typeof state.profile.fetchedAt === 'string' ? new Date(state.profile.fetchedAt) : null;
       $('cache-note').textContent = fetchedAt && Number.isFinite(fetchedAt.getTime())
         ? ` Profile fetched ${fetchedAt.toLocaleString()}.`
         : ' Fetch time unavailable.';
-      $('status-warning').textContent = avatarStatus === 'initials'
-        ? ' The avatar could not be loaded, so initials are shown.' : '';
+      const warnings = [];
+      if (state.profile.stale && state.profile.partial) warnings.push('WordPress.org is limiting full profile requests, so recently cached basic details are shown.');
+      else if (state.profile.stale) warnings.push('WordPress.org is limiting requests, so recently cached profile details are shown.');
+      else if (state.profile.partial) warnings.push('WordPress.org is limiting full profile requests, so only basic profile details are shown.');
+      if (avatarStatus === 'initials') warnings.push('The avatar could not be loaded, so initials are shown.');
+      $('status-warning').textContent = warnings.length ? ` ${warnings.join(' ')}` : '';
     } catch (error) {
       if (version !== state.renderVersion) return;
       clearCard();
@@ -881,6 +892,4 @@
   addEventListener('pagehide', () => { resetBackground(); cancelRender(); });
   addEventListener('pageshow', event => { if (event.persisted) scheduleRender(); });
   restoreSettings();
-  // Only a fresh builder gets the demo; shared or invalid settings stay explicit.
-  if (!location.search) submitProfile(null, true);
 })();

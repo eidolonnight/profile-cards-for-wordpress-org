@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseHTML } from 'linkedom/worker';
-import { queryOptions, parseProfile, safeAvatar, boundedFetch, getProfile, getAvatarData } from '../functions/_profile.js';
+import { queryOptions, parseProfile, safeAvatar, boundedFetch, getProfile, getAvatarData, profileMaxAgeMs } from '../functions/_profile.js';
 import { renderCard } from '../functions/_svg.js';
 import { GET as jsonGET } from '../functions/json.js';
 import { GET as cardGET } from '../functions/card.js';
@@ -10,6 +10,13 @@ import { GET as cardGET } from '../functions/card.js';
 const fixture = (username = 'fixture') => `<html><head><meta property="profile:username" content="${username}"></head><body><header class="site-header"><h2>Ada &amp; Example</h2><img class="avatar" src="https://secure.gravatar.com/avatar/${'a'.repeat(64)}?s=224"><span class="wp-p2-joined">joined Jan 2001</span></header><li id="user-member-since"><strong>January 2nd, 2001</strong></li><section class="wp-p2-badges-block"><span class="medal badge-code"><span class="mi dashicons dashicons-editor-code"></span><span class="mn">Core Contributor</span></span><span class="medal badge-marketing"><span class="mn">Marketing Team</span></span></section></body></html>`;
 const options = (q = '') => queryOptions(new Request(`http://localhost/card?username=fixture${q}`));
 const htmlResponse = (username) => new Response(fixture(username), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+const apiResponse = (username) => Response.json({
+  id: 42,
+  name: 'Fallback Example',
+  slug: username,
+  link: `https://profiles.wordpress.org/${username}/`,
+  avatar_urls: { 96: `//www.gravatar.com/avatar/${'c'.repeat(32)}?s=96&#038;r=g&#038;d=mm` },
+});
 
 test('query defaults and compatible explicit options', () => {
   assert.equal(options().avatar, true); assert.equal(options().link, false);
@@ -39,7 +46,11 @@ test('restricts avatar origin and route, never trusts page-provided request URLs
 });
 test('bounded fetch maps missing, rate-limit, redirects and failed upstream', async () => {
   for (const [status, code] of [[404, 'profile_not_found'], [429, 'upstream_busy'], [302, 'upstream_unavailable'], [500, 'upstream_unavailable']]) {
-    await assert.rejects(() => boundedFetch('https://profiles.wordpress.org/example/', { fetcher: async (_url, init) => { assert.equal(init.redirect, 'manual'); return new Response('error', { status }); } }), { code });
+    await assert.rejects(() => boundedFetch('https://profiles.wordpress.org/example/', { fetcher: async (_url, init) => { assert.equal(init.redirect, 'manual'); return new Response('error', { status, headers: status === 429 ? { 'Retry-After': '120' } : {} }); } }), error => {
+      assert.equal(error.code, code);
+      if (status === 429) assert.equal(error.retryAfterMs, 120000);
+      return true;
+    });
   }
 });
 test('bounded fetch rejects oversized streamed and declared bodies', async () => {
@@ -91,5 +102,139 @@ test('actual route exports return useful HTTP errors and correct types', async (
   try {
     const good = await jsonGET(new Request('https://site.test/json?username=route-test')); assert.equal(good.status, 200); assert.equal((await good.json()).name, 'Ada & Example');
     const card = await cardGET(new Request('https://site.test/card?username=route-test&avatar=false')); assert.equal(card.status, 200); assert.match(card.headers.get('content-type'), /^image\/svg\+xml/); assert.match(await card.text(), /Core Contributor/); assert.equal(card.headers.get('cache-control'), 'private, no-store');
+  } finally { globalThis.fetch = savedFetch; }
+});
+
+test('profile throttling falls back to the public WordPress.org user endpoint and starts a cooldown', async () => {
+  const calls = []; const now = 10_000_000;
+  const profile = await getProfile('rate-fallback-test', { now, fetcher: async url => {
+    calls.push(url);
+    if (url === 'https://profiles.wordpress.org/rate-fallback-test/') return new Response('limited', { status: 429, headers: { 'Retry-After': '120' } });
+    assert.equal(url, 'https://profiles.wordpress.org/wp-json/wporg/v1/users/rate-fallback-test');
+    return apiResponse('rate-fallback-test');
+  } });
+  assert.deepEqual(calls, [
+    'https://profiles.wordpress.org/rate-fallback-test/',
+    'https://profiles.wordpress.org/wp-json/wporg/v1/users/rate-fallback-test',
+  ]);
+  assert.equal(profile.userName, 'rate-fallback-test');
+  assert.equal(profile.name, 'Fallback Example');
+  assert.equal(profile.userId, '42');
+  assert.equal(profile.partial, true);
+  assert.equal(profile.stale, undefined);
+  assert.match(profile.avatar, new RegExp(`^https://www\\.gravatar\\.com/avatar/${'c'.repeat(32)}\\?s=320`));
+
+  const cooldownCalls = [];
+  const cooldownProfile = await getProfile('cooldown-fallback-test', { now: now + 1000, fetcher: async url => {
+    cooldownCalls.push(url);
+    assert.equal(url, 'https://profiles.wordpress.org/wp-json/wporg/v1/users/cooldown-fallback-test');
+    return apiResponse('cooldown-fallback-test');
+  } });
+  assert.equal(cooldownProfile.partial, true);
+  assert.deepEqual(cooldownCalls, ['https://profiles.wordpress.org/wp-json/wporg/v1/users/cooldown-fallback-test']);
+});
+
+test('fallback throttling suppresses both profile endpoints for its retry interval', async () => {
+  const calls = []; const now = 12_000_000;
+  await getProfile('cooldown-seed-test', { now, fetcher: async url => {
+    calls.push(url);
+    if (url === 'https://profiles.wordpress.org/cooldown-seed-test/') return new Response('limited', { status: 429, headers: { 'Retry-After': '10' } });
+    return apiResponse('cooldown-seed-test');
+  } });
+  await assert.rejects(
+    getProfile('cooldown-extend-test', { now: now + 1000, fetcher: async url => {
+      calls.push(url);
+      assert.equal(url, 'https://profiles.wordpress.org/wp-json/wporg/v1/users/cooldown-extend-test');
+      return new Response('limited', { status: 429, headers: { 'Retry-After': '120' } });
+    } }),
+    error => error.code === 'upstream_busy' && error.retryAfterMs === 120000,
+  );
+  await assert.rejects(
+    getProfile('cooldown-proof-test', { now: now + 11000, fetcher: async url => {
+      calls.push(url);
+      throw new Error(`unexpected request during fallback cooldown: ${url}`);
+    } }),
+    error => error.code === 'upstream_busy' && error.retryAfterMs === 110000,
+  );
+  assert.equal(calls.includes('https://profiles.wordpress.org/cooldown-proof-test/'), false);
+  assert.equal(calls.includes('https://profiles.wordpress.org/wp-json/wporg/v1/users/cooldown-proof-test'), false);
+});
+
+test('profile throttling serves a bounded stale full-profile cache before degrading to basic data', async () => {
+  const calls = []; const now = 20_000_000;
+  const fetcher = async url => {
+    calls.push(url);
+    assert.equal(url, 'https://profiles.wordpress.org/stale-profile-test/');
+    return calls.length === 1 ? htmlResponse('stale-profile-test') : new Response('limited', { status: 429, headers: { 'Retry-After': '60' } });
+  };
+  const fresh = await getProfile('stale-profile-test', { now, fetcher });
+  const stale = await getProfile('stale-profile-test', { now: now + 900001, fetcher });
+  assert.equal(fresh.name, 'Ada & Example');
+  assert.equal(fresh.stale, undefined);
+  assert.equal(stale.name, fresh.name);
+  assert.equal(stale.fetchedAt, fresh.fetchedAt);
+  assert.equal(stale.stale, true);
+  assert.equal(stale.partial, undefined);
+  assert.equal(profileMaxAgeMs(stale, now + 900001), 300000);
+  assert.deepEqual(calls, ['https://profiles.wordpress.org/stale-profile-test/', 'https://profiles.wordpress.org/stale-profile-test/']);
+});
+
+test('expired partial data is refreshed from the basic endpoint instead of entering the stale full-profile window', async () => {
+  const calls = []; const now = 30_000_000;
+  const fetcher = async url => {
+    calls.push(url);
+    if (url.endsWith('/partial-refresh-test/')) return new Response('limited', { status: 429, headers: { 'Retry-After': '60' } });
+    assert.equal(url, 'https://profiles.wordpress.org/wp-json/wporg/v1/users/partial-refresh-test');
+    return apiResponse('partial-refresh-test');
+  };
+  const first = await getProfile('partial-refresh-test', { now, fetcher });
+  const refreshed = await getProfile('partial-refresh-test', { now: now + 300001, fetcher });
+  assert.equal(first.partial, true);
+  assert.equal(refreshed.partial, true);
+  assert.equal(refreshed.stale, undefined);
+  assert.deepEqual(calls, [
+    'https://profiles.wordpress.org/partial-refresh-test/',
+    'https://profiles.wordpress.org/wp-json/wporg/v1/users/partial-refresh-test',
+    'https://profiles.wordpress.org/partial-refresh-test/',
+    'https://profiles.wordpress.org/wp-json/wporg/v1/users/partial-refresh-test',
+  ]);
+});
+
+test('a concurrent profile success does not erase a newer isolate cooldown', async () => {
+  const now = 40_000_000;
+  let releaseSuccess;
+  const delayed = new Promise(resolve => { releaseSuccess = resolve; });
+  const success = getProfile('concurrent-success-test', { now, fetcher: async url => {
+    assert.equal(url, 'https://profiles.wordpress.org/concurrent-success-test/');
+    return delayed;
+  } });
+  await Promise.resolve();
+  const throttled = await getProfile('concurrent-throttle-test', { now: now + 1, fetcher: async url => {
+    if (url === 'https://profiles.wordpress.org/concurrent-throttle-test/') return new Response('limited', { status: 429, headers: { 'Retry-After': '120' } });
+    assert.equal(url, 'https://profiles.wordpress.org/wp-json/wporg/v1/users/concurrent-throttle-test');
+    return apiResponse('concurrent-throttle-test');
+  } });
+  assert.equal(throttled.partial, true);
+  releaseSuccess(htmlResponse('concurrent-success-test'));
+  assert.equal((await success).name, 'Ada & Example');
+
+  const calls = [];
+  const proof = await getProfile('concurrent-proof-test', { now: now + 1000, fetcher: async url => {
+    calls.push(url);
+    assert.equal(url, 'https://profiles.wordpress.org/wp-json/wporg/v1/users/concurrent-proof-test');
+    return apiResponse('concurrent-proof-test');
+  } });
+  assert.equal(proof.partial, true);
+  assert.deepEqual(calls, ['https://profiles.wordpress.org/wp-json/wporg/v1/users/concurrent-proof-test']);
+});
+
+test('route preserves the longest upstream retry delay when neither full nor basic data is available', async () => {
+  const savedFetch = globalThis.fetch;
+  globalThis.fetch = async url => new Response('limited', { status: 429, headers: { 'Retry-After': url.includes('/wp-json/') ? '30' : '120' } });
+  try {
+    const response = await jsonGET(new Request('https://site.test/json?username=route-rate-test'));
+    assert.equal(response.status, 503);
+    assert.equal(response.headers.get('retry-after'), '120');
+    assert.equal((await response.json()).error.code, 'upstream_busy');
   } finally { globalThis.fetch = savedFetch; }
 });

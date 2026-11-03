@@ -18,7 +18,7 @@ test('community branding and username entry use the cleaned-up copy', () => {
   assert.equal(username.getAttribute('placeholder'), 'Your WordPress.org Username');
   assert.ok(document.querySelector('label[for="username"]'));
   assert.ok(username.hasAttribute('required'));
-  assert.ok(document.getElementById('profile-form').textContent.includes('Profile data may be cached for up to 15 minutes.'));
+  assert.ok(document.getElementById('profile-form').textContent.includes('Profile data is normally cached for up to 15 minutes. Recently cached details may be used while WordPress.org limits requests.'));
   assert.equal(document.querySelector('#refresh, #try-profile'), null);
 });
 

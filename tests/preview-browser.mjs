@@ -52,7 +52,8 @@ try {
   assert.equal(traffic.filter(path => path.startsWith('/card?')).length, 0);
   for (const layout of ['profile', 'square', 'classic', 'avatar', 'announcement']) {
     await page.locator('#layout').selectOption(layout); await ready(page);
-    for (const action of ['dark', 'light', 'hide-avatar', 'show-avatar']) {
+    const actions = layout === 'announcement' ? ['dark', 'light'] : ['dark', 'light', 'hide-avatar', 'show-avatar'];
+    for (const action of actions) {
       const before = traffic.length;
       if (action.endsWith('avatar')) await page.locator('#avatar').setChecked(action === 'show-avatar');
       else await selectPalette(page, action);
@@ -61,9 +62,9 @@ try {
       await parity(page, layout, action);
     }
   }
-  assert.equal(report.equality.length, 20);
+  assert.equal(report.equality.length, 18);
   assert.deepEqual(traffic.filter(path => path.startsWith('/preview-data?')).map(path => new URL(path, base).searchParams.get('size')), ['320', '1024']);
-  await check('20 real-profile SVGs exactly equal canonical /card; warm changes make zero requests; photo variants loaded once each');
+  await check('18 valid real-profile SVGs exactly equal canonical /card; warm changes make zero requests; photo variants loaded once each');
   await page.locator('#layout').selectOption('profile'); await ready(page);
   const beforeRapid = traffic.length;
   await page.evaluate(() => {
@@ -87,7 +88,7 @@ try {
     if (inputCount === 1) data.maxAgeMs = 0;
     await route.fulfill({ response: original, json: data });
   });
-  await fresh(expiry); await ready(expiry); assert.equal(inputCount, 1);
+  await fresh(expiry); await ready(expiry); assert.equal(inputCount, 2);
   await selectPalette(expiry, 'dark'); await ready(expiry); assert.equal(inputCount, 2);
   await selectPalette(expiry, 'light'); await ready(expiry); assert.equal(inputCount, 2);
   assert.equal(expiryTraffic.filter(path => path.startsWith('/card?')).length, 0);
@@ -168,6 +169,6 @@ try {
   await invalid.unroute('**/preview-data?*'); await invalid.locator('#create-button').click(); await ready(invalid);
   await invalid.close(); await check('authorization failure, wrong profile, unsafe image and unbounded TTL fail closed and recover on retry');
   assert.deepEqual(report.errors, []); assert.deepEqual(report.externalOrigins, []);
-  assert.equal(report.equality.length, 23); report.pass = true;
+  assert.equal(report.equality.length, 21); report.pass = true;
 } catch (error) { report.pass = false; report.failure = error.stack; process.exitCode = 1; }
 finally { await browser.close(); await save(); console.log(JSON.stringify({ pass: report.pass, checks: report.checks, equalityCases: report.equality.length, errors: report.errors, failure: report.failure }, null, 2)); }

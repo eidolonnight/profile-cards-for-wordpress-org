@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { assertInitialDemo, assertDownloadedPNG, assertCleanupFailures } from './ui-acceptance.mjs';
+import { assertInitialEmpty, assertDownloadedPNG, assertCleanupFailures } from './ui-acceptance.mjs';
 
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const base = process.env.TEST_ORIGIN || 'http://127.0.0.1:4197';
@@ -14,9 +14,11 @@ context.on('page', page => page.on('pageerror', error => report.errors.push(erro
 try {
   const page = await context.newPage();
   assert.equal((await page.goto(base, { waitUntil: 'networkidle' })).status(), 200);
-  await assertInitialDemo(page); report.checks.push('real matt demo, blank username, branding, removed controls and export ordering');
+  await assertInitialEmpty(page); report.checks.push('idle startup, blank username, branding, removed controls and export ordering');
+  await page.locator('#username').fill('matt'); await page.locator('#create-button').click();
+  await page.waitForFunction(() => !document.getElementById('exports').disabled && document.getElementById('card-preview').complete && document.getElementById('card-preview').naturalWidth > 0, null, { timeout: 45000 });
   const waiting = page.waitForEvent('download'); await page.locator('#download-png').click(); const download = await waiting;
-  assert.equal(download.suggestedFilename(), 'matt-profile.png');
+  assert.match(download.suggestedFilename(), /^matt-.*-announcement\.png$/);
   await download.saveAs(evidence + '/demo.png'); const png = await readFile(evidence + '/demo.png');
   await assertDownloadedPNG(page, png); report.checks.push('actual downloaded PNG signature, dimensions and decoded pixels match the preview');
   for (const width of [1440, 320]) {
@@ -31,9 +33,9 @@ try {
   if (process.env.AXE_PATH) {
     await page.addScriptTag({ path: process.env.AXE_PATH });
     report.accessibility = await page.evaluate(() => axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa'] } }).then(result => result.violations.map(item => ({ id: item.id, nodes: item.nodes.map(node => node.target) }))));
-    assert.deepEqual(report.accessibility, []); report.checks.push('demo state axe WCAG A/AA');
+    assert.deepEqual(report.accessibility, []); report.checks.push('created-card state axe WCAG A/AA');
   }
-  await assertCleanupFailures(context, base); report.checks.push('manual shared links, malformed settings, demo outage recovery, download-only actions, PNG downloads, canvas failure recovery and stale conversion invalidation');
+  await assertCleanupFailures(context, base); report.checks.push('manual shared links, malformed settings, lookup outage recovery, download-only actions, PNG downloads, canvas failure recovery and stale conversion invalidation');
   assert.deepEqual(report.errors, []); report.pass = true;
 } catch (error) { report.pass = false; report.failure = error.stack; process.exitCode = 1; }
 finally {
