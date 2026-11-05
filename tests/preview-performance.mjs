@@ -46,7 +46,8 @@ try {
   });
   await page.locator('#username').fill('eidolonnight');
   await page.locator('#create-button').click(); await ready();
-  if (!await page.locator('.palette-settings details').evaluate(el => el.open)) await page.locator('.palette-settings summary').click();
+  const colors = page.locator('#customize-colors');
+  if (!await colors.evaluate(el => el.open)) await colors.locator(':scope > summary').click();
   // Also time inside the browser, excluding Playwright scrolling/actionability
   // and protocol overhead. Keep the original wall-time series for comparison.
   await page.evaluate(() => {
@@ -68,7 +69,10 @@ try {
   });
   for (const layout of ['profile', 'square', 'avatar', 'announcement']) {
     if (await page.locator('#layout').inputValue() !== layout) { await page.locator('#layout').selectOption(layout); await ready(); }
-    for (const action of ['dark', 'light', 'hide-avatar', 'show-avatar']) {
+    const actions = await page.locator('#avatar').isEnabled()
+      ? ['dark', 'light', 'hide-avatar', 'show-avatar']
+      : ['dark', 'light'];
+    for (const action of actions) {
       const previous = await page.locator('#card-preview').getAttribute('src');
       await page.evaluate(() => performance.clearResourceTimings());
       const started = performance.now();
@@ -88,12 +92,13 @@ try {
       console.log(JSON.stringify({ layout, action, elapsedMs: Math.round(elapsedMs), interactionMs: Math.round(interactionMs), requests: resources.length }));
     }
   }
-  assert.equal(report.samples.length, 16);
+  assert.equal(report.samples.length, 14);
   assert.deepEqual(report.errors, []);
   const sorted = report.samples.map(item => item.elapsedMs).sort((a, b) => a - b);
   const native = report.samples.map(item => item.interactionMs).sort((a, b) => a - b);
-  report.summary = { samples: sorted.length, medianMs: (sorted[7] + sorted[8]) / 2, p95Ms: sorted[Math.ceil(sorted.length * 0.95) - 1], requests: report.samples.reduce((sum, item) => sum + item.resources.length, 0), transferredBytes: report.samples.flatMap(item => item.resources).reduce((sum, item) => sum + item.transferBytes, 0) };
-  report.summary.medianInteractionMs = (native[7] + native[8]) / 2;
+  const median = values => values.length % 2 ? values[(values.length - 1) / 2] : (values[values.length / 2 - 1] + values[values.length / 2]) / 2;
+  report.summary = { samples: sorted.length, medianMs: median(sorted), p95Ms: sorted[Math.ceil(sorted.length * 0.95) - 1], requests: report.samples.reduce((sum, item) => sum + item.resources.length, 0), transferredBytes: report.samples.flatMap(item => item.resources).reduce((sum, item) => sum + item.transferBytes, 0) };
+  report.summary.medianInteractionMs = median(native);
   report.summary.p95InteractionMs = native[Math.ceil(native.length * 0.95) - 1];
   if (process.env.EXPECT_LOCAL_RENDER === '1') assert.equal(report.summary.requests, 0, 'Warm option changes must not fetch new inputs or SVGs');
   report.pass = true;

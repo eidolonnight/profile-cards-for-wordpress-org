@@ -54,7 +54,8 @@ test('stage versions every browser asset edge without changing canonical sources
   assert.ok(app.includes(`fetch('/preview/preview.js?v=${revision}', { method: 'HEAD'`));
   assert.equal(stripRevision(app), await readFile(join(source, 'public/app.js'), 'utf8'));
   const demo = await readFile(join(root, 'matt-demo.js'), 'utf8');
-  assert.equal(demo, await readFile(join(source, 'public/matt-demo.js'), 'utf8'));
+  assert.match(demo, new RegExp(`avatarPath: '/matt-demo-avatar\\.jpg\\?v=${revision}'`));
+  assert.equal(stripRevision(demo), await readFile(join(source, 'public/matt-demo.js'), 'utf8'));
   const manifest = JSON.parse(await readFile(join(release, 'source-manifest.json')));
   let imports = 0;
   for (const item of manifest) {
@@ -78,7 +79,7 @@ test('stage versions every browser asset edge without changing canonical sources
   const expectedImports = (await Promise.all(BROWSER_MODULES.map(async ([from]) => [...(await readFile(join(source, from), 'utf8')).matchAll(/^(?:import|export)\s+[^;]+?\s+from\s+(['"])([^'"]+)\1/gm)].length))).reduce((sum, count) => sum + count, 0);
   assert.equal(imports, expectedImports); assert.ok(imports > 0);
   assert.deepEqual(await Promise.all(['public', 'shared', 'functions', 'events'].map(path => snapshot(join(source, path)))), before);
-  assert.equal(manifest.length, 37 + EVENT_MODULES.length * 2);
+  assert.equal(manifest.length, 38 + EVENT_MODULES.length * 2);
   const stagedPaths = (await readdir(root, { recursive: true, withFileTypes: true }))
     .filter(entry => entry.isFile()).map(entry => join(entry.parentPath, entry.name).slice(root.length + 1)).sort();
   assert.deepEqual(stagedPaths, manifest.map(item => item.path).sort());
@@ -114,7 +115,7 @@ test('asset revision is deterministic and changes for canonical content in an is
   // No timestamps, release names, absolute source paths, or non-allowlisted files enter the key.
   await writeFile(join(fixture, 'unlisted.txt'), 'not a release input');
   assert.equal((await stage(home, 'stable-03', entry)).output.assetRevision, first.output.assetRevision);
-  for (const [index, path] of ['public/styles.css', 'public/favicon.png', 'shared/options.js', 'functions/card.js', 'package.json', 'events/wordcamp-asia/theme.js', 'events/wordcamp-europe/artwork.js', 'events/wordcamp-india/event.js', 'events/fonts.js'].entries()) {
+  for (const [index, path] of ['public/styles.css', 'public/favicon.png', 'public/matt-demo-avatar.jpg', 'shared/options.js', 'functions/card.js', 'package.json', 'events/wordcamp-asia/theme.js', 'events/wordcamp-europe/artwork.js', 'events/wordcamp-india/event.js', 'events/fonts.js'].entries()) {
     const target = join(fixture, path); const original = await readFile(target);
     await writeFile(target, Buffer.concat([original, Buffer.from('\n')]));
     const changed = await stage(home, `changed-0${index}`, entry);
@@ -135,7 +136,7 @@ test('stage has exact manifest hashes, no dependency metadata, and refuses an ex
   const home = await temp(); const release = join(home, 'echion/projects/wp-profile-cards/releases/release-01'); const root = join(release, 'site');
   assert.equal(run(home, root).status, 0);
   const manifest = JSON.parse(await readFile(join(release, 'source-manifest.json')));
-  assert.deepEqual(manifest.map(x => x.path).sort(), ['index.html', 'app.js', 'matt-demo.js', 'theme.js', 'background.js', 'styles.css', 'site-logo.png', 'favicon.png', 'site-favicon.ico', 'create.html', 'THIRD-PARTY-NOTICES.txt', 'FONT-LICENSES.txt', 'LICENSE', 'sf.jsonc', 'functions/_fonts.js', 'functions/_profile.js', 'functions/_svg.js', 'functions/json.js', 'functions/card.js', 'functions/_events.js', 'functions/_social.js', 'functions/events.js', 'functions/preview-data.js', 'preview/preview.js', 'preview/options.js', 'preview/svg.js', 'preview/social.js', 'preview/fonts.js', 'preview/events.js', 'preview/event-fonts.js', 'preview/event-themes.js', 'shared/options.js', 'shared/svg.js', 'shared/social.js', 'shared/fonts.js', 'shared/events.js', 'robots.txt', ...EVENT_MODULES, ...EVENT_MODULES.map(path => `preview/${path}`)].sort());
+  assert.deepEqual(manifest.map(x => x.path).sort(), ['index.html', 'app.js', 'matt-demo.js', 'matt-demo-avatar.jpg', 'theme.js', 'background.js', 'styles.css', 'site-logo.png', 'favicon.png', 'site-favicon.ico', 'create.html', 'THIRD-PARTY-NOTICES.txt', 'FONT-LICENSES.txt', 'LICENSE', 'sf.jsonc', 'functions/_fonts.js', 'functions/_profile.js', 'functions/_svg.js', 'functions/json.js', 'functions/card.js', 'functions/_events.js', 'functions/_social.js', 'functions/events.js', 'functions/preview-data.js', 'preview/preview.js', 'preview/options.js', 'preview/svg.js', 'preview/social.js', 'preview/fonts.js', 'preview/events.js', 'preview/event-fonts.js', 'preview/event-themes.js', 'shared/options.js', 'shared/svg.js', 'shared/social.js', 'shared/fonts.js', 'shared/events.js', 'robots.txt', ...EVENT_MODULES, ...EVENT_MODULES.map(path => `preview/${path}`)].sort());
   assert.equal(manifest.some(x => /package|test|README|manifest|provenance|\.(woff2|ttf)$/.test(x.path)), false);
   for (const item of manifest) assert.equal(createHash('sha256').update(await readFile(join(root, item.path))).digest('hex'), item.sha256);
   for (const name of ['options.js', 'svg.js', 'social.js', 'fonts.js', 'events.js']) {
@@ -213,7 +214,10 @@ test('local adapter serves exactly the shared allowlist and preview-data route w
       const head = await fetch(`${origin}/${name}`, { method: 'HEAD' });
       assert.equal(head.status, 200); assert.equal(await head.text(), '');
     }
-    assert.equal((await fetch(`${origin}/matt-demo-avatar.jpg?v=test`)).status, 404);
+    const portrait = await fetch(`${origin}/matt-demo-avatar.jpg?v=test`);
+    assert.equal(portrait.status, 200);
+    assert.equal(portrait.headers.get('Content-Type'), 'image/jpeg');
+    assert.equal(createHash('sha256').update(Buffer.from(await portrait.arrayBuffer())).digest('hex'), 'd50da28a8f33ce163a16f4a1f4fa8d2102e926becf0ccdc39f2bbee13faebaa1');
     for (const from of ['shared', 'preview']) {
       for (const suffix of ['', 'missing.js', 'preview.js/extra', '../functions/_profile.js', '%2e%2e/functions/_profile.js', '%2f..%2ffunctions%2f_profile.js']) assert.equal((await fetch(`${origin}/${from}/${suffix}`)).status, 404);
     }

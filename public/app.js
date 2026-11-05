@@ -420,13 +420,14 @@
     return `The server could not complete this request (HTTP ${response.status}). Try again.`;
   }
 
-  async function boundedResponseText(response, maxBytes) {
-    const declared = Number(response.headers.get('content-length'));
-    if (Number.isFinite(declared) && declared > maxBytes) throw new Error('The preview data is too large.');
+  async function boundedResponseBytes(response, maxBytes, tooLarge = 'The response is too large.') {
+    const lengthHeader = response.headers.get('content-length');
+    const declared = lengthHeader === null ? Number.NaN : Number(lengthHeader);
+    if (Number.isFinite(declared) && declared > maxBytes) throw new Error(tooLarge);
     if (!response.body) {
       const bytes = new Uint8Array(await response.arrayBuffer());
-      if (bytes.byteLength > maxBytes) throw new Error('The preview data is too large.');
-      return new TextDecoder().decode(bytes);
+      if (bytes.byteLength > maxBytes) throw new Error(tooLarge);
+      return bytes;
     }
     const reader = response.body.getReader();
     const chunks = []; let total = 0;
@@ -435,7 +436,7 @@
         const { done, value } = await reader.read();
         if (done) break;
         total += value.byteLength;
-        if (total > maxBytes) throw new Error('The preview data is too large.');
+        if (total > maxBytes) throw new Error(tooLarge);
         chunks.push(value);
       }
     } catch (error) {
@@ -444,7 +445,11 @@
     }
     const bytes = new Uint8Array(total); let offset = 0;
     for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
-    return new TextDecoder().decode(bytes);
+    return bytes;
+  }
+
+  async function boundedResponseText(response, maxBytes) {
+    return new TextDecoder().decode(await boundedResponseBytes(response, maxBytes, 'The preview data is too large.'));
   }
 
   function friendlyError(error) {
@@ -490,6 +495,62 @@
     });
   }
 
+  function decodeBundledAvatar(blob, signal) {
+    return new Promise((resolve, reject) => {
+      const image = new Image();
+      const url = URL.createObjectURL(blob);
+      const finish = (error) => {
+        signal.removeEventListener('abort', abort);
+        image.onload = image.onerror = null;
+        URL.revokeObjectURL(url);
+        error ? reject(error) : resolve();
+      };
+      const abort = () => finish(new DOMException('Request aborted', 'AbortError'));
+      signal.addEventListener('abort', abort, { once: true });
+      image.onerror = () => finish(new Error('The bundled demo avatar is invalid.'));
+      image.onload = () => finish(image.naturalWidth === 1024 && image.naturalHeight === 1024
+        ? null : new Error('The bundled demo avatar is invalid.'));
+      if (signal.aborted) { abort(); return; }
+      image.src = url;
+    });
+  }
+
+  function bundledAvatarData(blob, signal) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      const finish = (error) => {
+        signal.removeEventListener('abort', abort);
+        error ? reject(error) : resolve(reader.result);
+      };
+      const abort = () => { reader.abort(); finish(new DOMException('Request aborted', 'AbortError')); };
+      signal.addEventListener('abort', abort, { once: true });
+      reader.onerror = () => finish(new Error('The bundled demo avatar could not be read.'));
+      reader.onload = () => typeof reader.result === 'string' && /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(reader.result)
+        ? finish() : finish(new Error('The bundled demo avatar is invalid.'));
+      if (signal.aborted) { abort(); return; }
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  async function bundledAvatar(path) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3000);
+    try {
+      const response = await fetch(path, { signal: controller.signal, credentials: 'same-origin', redirect: 'error', cache: 'force-cache' });
+      if (!response.ok || response.headers.get('content-type')?.split(';', 1)[0].toLowerCase() !== 'image/jpeg') {
+        throw new Error('The bundled demo avatar could not be loaded.');
+      }
+      const bytes = await boundedResponseBytes(response, 2 * 1024 * 1024, 'The bundled demo avatar is invalid.');
+      if (bytes.byteLength < 1024 || bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[2] !== 0xff) throw new Error('The bundled demo avatar is invalid.');
+      const digest = [...new Uint8Array(await abortable(crypto.subtle.digest('SHA-256', bytes), controller.signal))]
+        .map(byte => byte.toString(16).padStart(2, '0')).join('');
+      if (digest !== 'd50da28a8f33ce163a16f4a1f4fa8d2102e926becf0ccdc39f2bbee13faebaa1') throw new Error('The bundled demo avatar is invalid.');
+      const blob = new Blob([bytes], { type: 'image/jpeg' });
+      await decodeBundledAvatar(blob, controller.signal);
+      return await bundledAvatarData(blob, controller.signal);
+    } finally { clearTimeout(timeout); }
+  }
+
 
   async function loadDemo() {
     const profileVersion = state.profileVersion;
@@ -500,9 +561,12 @@
       const { MATT_DEMO } = await import('/matt-demo.js');
       if (!validProfile(MATT_DEMO?.profile) || MATT_DEMO.profile.userName !== 'matt'
         || !Number.isFinite(Date.parse(MATT_DEMO.snapshotAt)) || MATT_DEMO.profile.fetchedAt !== MATT_DEMO.snapshotAt
-        || MATT_DEMO.avatarPath !== null) throw new Error('The bundled demo profile is invalid.');
+        || !/^\/matt-demo-avatar\.jpg(?:\?v=[a-f0-9]{64})?$/.test(MATT_DEMO.avatarPath)) throw new Error('The bundled demo profile is invalid.');
+      let avatarData = null;
+      try { avatarData = await bundledAvatar(MATT_DEMO.avatarPath); }
+      catch (_) { /* The local snapshot remains usable with initials. */ }
       if (profileVersion !== state.profileVersion || $('username').value || location.search) return;
-      const avatar = (size) => ({ size, data: null, status: 'initials' });
+      const avatar = (size) => ({ size, data: avatarData, status: avatarData ? 'embedded' : 'initials' });
       const fingerprint = JSON.stringify(MATT_DEMO.profile);
       state.demo = true;
       state.demoSnapshotAt = MATT_DEMO.snapshotAt;
@@ -778,7 +842,9 @@
       if (state.profile.stale && state.profile.partial) warnings.push('WordPress.org is limiting full profile requests, so recently cached basic details are shown.');
       else if (state.profile.stale) warnings.push('WordPress.org is limiting requests, so recently cached profile details are shown.');
       else if (state.profile.partial) warnings.push('WordPress.org is limiting full profile requests, so only basic profile details are shown.');
-      if (avatarStatus === 'initials' && !state.demo) warnings.push('The avatar could not be loaded, so initials are shown.');
+      if (avatarStatus === 'initials') warnings.push(state.demo
+        ? 'The bundled portrait could not be loaded, so initials are shown.'
+        : 'The avatar could not be loaded, so initials are shown.');
       $('status-warning').textContent = warnings.length ? ` ${warnings.join(' ')}` : '';
     } catch (error) {
       if (version !== state.renderVersion) return;

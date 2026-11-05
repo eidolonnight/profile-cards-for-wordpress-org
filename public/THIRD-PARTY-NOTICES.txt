@@ -16,10 +16,14 @@ project source. The complete GPL version 2 text is provided at /LICENSE.
 MATT DEMO PROFILE SNAPSHOT
 
 matt-demo.js contains a dated snapshot of public profile fields from
-https://profiles.wordpress.org/matt/ captured on 2026-11-03. No portrait is
-redistributed; the request-free demo renders initials instead. The avatar URL
-recorded in the snapshot module is provenance only and is never fetched for
-the bundled demo.
+https://profiles.wordpress.org/matt/ captured on 2026-11-03.
+matt-demo-avatar.jpg is a cached copy of the public avatar retrieved on the
+same date from
+https://secure.gravatar.com/avatar/33252cd1f33526af53580fcb1736172f06e6716f32afdd1be19ec3096d15dea5?s=1024&d=mp&r=g
+SHA-256: d50da28a8f33ce163a16f4a1f4fa8d2102e926becf0ccdc39f2bbee13faebaa1
+The project owner explicitly confirmed permission to redistribute this image.
+It is served as a versioned local asset, so the bundled demo does not request
+the live Gravatar image.
 Verified social-account fields were captured on the same date from
 https://en.gravatar.com/767fc9c115a1b989744c755db47feb60.json.
 The snapshot is used only for the request-free initial demo and is labeled as

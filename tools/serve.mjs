@@ -7,7 +7,7 @@ import { GET as events } from '../functions/events.js';
 import { GET as previewData } from '../functions/preview-data.js';
 import { BROWSER_MODULES, browserModuleSource } from './browser-modules.mjs';
 // Loopback-only development adapter. Real Functions exports are invoked unchanged.
-const files = new Map([['/', ['index.html', 'text/html']], ['/create', ['index.html', 'text/html']], ['/index.html', ['index.html', 'text/html']], ['/app.js', ['app.js', 'text/javascript']], ['/matt-demo.js', ['matt-demo.js', 'text/javascript']], ['/THIRD-PARTY-NOTICES.txt', ['THIRD-PARTY-NOTICES.txt', 'text/plain']], ['/FONT-LICENSES.txt', ['FONT-LICENSES.txt', 'text/plain']], ['/styles.css', ['styles.css', 'text/css']]]);
+const files = new Map([['/', ['index.html', 'text/html']], ['/create', ['index.html', 'text/html']], ['/index.html', ['index.html', 'text/html']], ['/app.js', ['app.js', 'text/javascript']], ['/matt-demo.js', ['matt-demo.js', 'text/javascript']], ['/matt-demo-avatar.jpg', ['matt-demo-avatar.jpg', 'image/jpeg']], ['/THIRD-PARTY-NOTICES.txt', ['THIRD-PARTY-NOTICES.txt', 'text/plain']], ['/FONT-LICENSES.txt', ['FONT-LICENSES.txt', 'text/plain']], ['/styles.css', ['styles.css', 'text/css']]]);
 const root = fileURLToPath(new URL('../public/', import.meta.url));
 files.set('/background.js', ['background.js', 'text/javascript']);
 files.set('/theme.js', ['theme.js', 'text/javascript']);

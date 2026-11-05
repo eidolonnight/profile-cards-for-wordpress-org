@@ -14,7 +14,7 @@ try { assetRevision = JSON.parse(await readFile(release + '/asset-revision.json'
 catch (error) { if (error.code !== 'ENOENT') throw error; }
 const assetURL = path => {
   const url = new URL('/' + path, base);
-  if (assetRevision && /\.(?:js|css)$/.test(path)) url.searchParams.set('v', assetRevision);
+  if (assetRevision && /\.(?:js|css|jpg)$/.test(path)) url.searchParams.set('v', assetRevision);
   return url.href;
 };
 let accessURL;
@@ -32,7 +32,7 @@ const base = space.liveUrl.replace(/\/$/, '');
 const browser = await chromium.launch({ executablePath: '/usr/bin/chromium', args: ['--no-sandbox'], headless: true });
 const evidence = release + '/hosted'; await mkdir(evidence, { recursive: true, mode: 0o700 });
 const report = { origin: base, version: version.id, accessPolicy, assetRevision, anonymous: [], immutableAnonymous: [], runtime: [], sourceDenied: [], hashes: [], checks: [] };
-const accessPaths = ['/', '/create', '/json?username=eidolonnight', '/card?username=eidolonnight', '/events', '/preview-data?username=eidolonnight&size=0', '/matt-demo.js', '/preview/preview.js', '/preview/fonts.js'];
+const accessPaths = ['/', '/create', '/json?username=eidolonnight', '/card?username=eidolonnight', '/events', '/preview-data?username=eidolonnight&size=0', '/matt-demo.js', `/matt-demo-avatar.jpg${assetRevision ? `?v=${assetRevision}` : ''}`, '/preview/preview.js', '/preview/fonts.js'];
 try {
   const anonymous = await browser.newContext();
   for (const path of accessPaths) {
@@ -56,12 +56,14 @@ try {
   }
   const document = await page.goto(base, { waitUntil: 'networkidle' });
   assert.equal(new URL(page.url()).origin, new URL(base).origin); assert.equal(document.status(), 200); assert.equal(document.headers()['x-spacefast-version'], version.id);
+  const portraitRequests = await page.evaluate(() => performance.getEntriesByType('resource').map(entry => new URL(entry.name)).filter(url => url.pathname === '/matt-demo-avatar.jpg').map(url => url.pathname + url.search));
+  assert.deepEqual(portraitRequests, [`/matt-demo-avatar.jpg${assetRevision ? `?v=${assetRevision}` : ''}`]); report.portraitRequests = portraitRequests;
   if (!publicLive) { await context.storageState({ path: release + '/browser-state.json' }); await chmod(release + '/browser-state.json', 0o600); }
   report.documentHeaders = Object.fromEntries(Object.entries(document.headers()).filter(([key]) => ['content-type', 'x-spacefast-version', 'x-robots-tag', 'x-content-type-options', 'referrer-policy'].includes(key)));
   const catalog = JSON.parse(await readFile(release + '/files-served-readback.json', 'utf8')).data.files;
   for (const file of catalog) {
     const response = await context.request.get(assetURL(file.path)); const bytes = await response.body(); assert.equal(response.status(), 200);
-    if (assetRevision && /\.(?:js|css)$/.test(file.path)) assert.equal(response.headers()['x-spacefast-version'], version.id, 'Versioned browser asset must be current: ' + file.path);
+    if (assetRevision && /\.(?:js|css|jpg)$/.test(file.path)) assert.equal(response.headers()['x-spacefast-version'], version.id, 'Versioned browser asset must be current: ' + file.path);
     const digest = createHash('sha256').update(bytes).digest('hex'); report.hashes.push({ path: file.path, match: digest === file.sha256, digest });
     if (file.path.endsWith('.html')) await writeFile(evidence + '/' + file.path, bytes);
     assert.equal(digest, file.sha256, 'Served catalog hash mismatch: ' + file.path);

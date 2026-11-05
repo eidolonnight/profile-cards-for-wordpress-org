@@ -110,7 +110,7 @@ export async function assertInitialDemo(page) {
   const resources = await page.evaluate(() => performance.getEntriesByType('resource').map(entry => new URL(entry.name).pathname));
   assert.deepEqual(resources.filter(path => ['/json', '/preview-data', '/card'].includes(path)), []);
   assert.equal(resources.filter(path => path === '/matt-demo.js').length, 1);
-  assert.equal(resources.filter(path => path === '/matt-demo-avatar.jpg').length, 0);
+  assert.equal(resources.filter(path => path === '/matt-demo-avatar.jpg').length, 1);
 }
 
 // Validate real downloaded bytes against a fresh raster of the current preview.

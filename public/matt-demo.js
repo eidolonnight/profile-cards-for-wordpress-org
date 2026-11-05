@@ -22,7 +22,7 @@ const social = [
 
 export const MATT_DEMO = Object.freeze({
   snapshotAt,
-  avatarPath: null,
+  avatarPath: '/matt-demo-avatar.jpg',
   source: Object.freeze({
     profile: 'https://profiles.wordpress.org/matt/',
     avatar: 'https://secure.gravatar.com/avatar/33252cd1f33526af53580fcb1736172f06e6716f32afdd1be19ec3096d15dea5?s=1024&d=mp&r=g',

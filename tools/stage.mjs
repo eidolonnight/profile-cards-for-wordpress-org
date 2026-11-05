@@ -18,7 +18,7 @@ if (!destination) throw new Error('Provide a new <releases>/<release-name>/site 
 const root = resolve(destination); const release = dirname(root);
 if (dirname(release) !== base || basename(root) !== 'site' || !/^[a-zA-Z0-9][a-zA-Z0-9._-]+$/.test(basename(release))) throw new Error('Stage must be <owned releases root>/<new release name>/site.');
 const entries = [
-  ['public/index.html', 'index.html'], ['public/app.js', 'app.js'], ['public/matt-demo.js', 'matt-demo.js'], ['public/styles.css', 'styles.css'], ['public/background.js', 'background.js'], ['public/theme.js', 'theme.js'],
+  ['public/index.html', 'index.html'], ['public/app.js', 'app.js'], ['public/matt-demo.js', 'matt-demo.js'], ['public/matt-demo-avatar.jpg', 'matt-demo-avatar.jpg'], ['public/styles.css', 'styles.css'], ['public/background.js', 'background.js'], ['public/theme.js', 'theme.js'],
   ...['site-logo.png', 'favicon.png', 'site-favicon.ico'].map(name => [`public/${name}`, name]),
   ['public/index.html', 'create.html'], ['public/THIRD-PARTY-NOTICES.txt', 'THIRD-PARTY-NOTICES.txt'], ['public/FONT-LICENSES.txt', 'FONT-LICENSES.txt'], ['LICENSE', 'LICENSE'], ['sf.jsonc', 'sf.jsonc'],
   ['functions/_fonts.js', 'functions/_fonts.js'], ['functions/_profile.js', 'functions/_profile.js'], ['functions/_svg.js', 'functions/_svg.js'], ['functions/json.js', 'functions/json.js'], ['functions/card.js', 'functions/card.js'],
@@ -57,6 +57,9 @@ function browserBytes(to, bytes) {
     // Includes both dynamic imports and the preview HEAD failure-classification probe.
     return Buffer.from(bytes.toString('utf8').replace(/(['"])(\/(?:background\.js|matt-demo\.js|preview\/preview\.js))\1/g,
       (_, quote, path) => `${quote}${path}?v=${revision}${quote}`));
+  }
+  if (to === 'matt-demo.js') {
+    return Buffer.from(bytes.toString('utf8').replace("'/matt-demo-avatar.jpg'", `'/matt-demo-avatar.jpg?v=${revision}'`));
   }
 
   if (to.startsWith('preview/')) {
