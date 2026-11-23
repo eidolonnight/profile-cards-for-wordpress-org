@@ -28,7 +28,7 @@
     catalog: null, catalogPromise: null, catalogFailed: false,
     pendingEvent: null, pendingRole: null, restoreInvalid: false,
     rendererPromise: null, previewInputs: null, inputRequest: null, previewUnavailable: false,
-    frameLoader: null, frames: new Map(),
+    frameLoader: null, frames: new Map(), preloaded: new Set(),
     background: null, backgroundModule: null, backgroundPromise: null,
     backgroundVersion: 0, backgroundPending: null, backgroundJob: false,
     backgroundBusy: false, backgroundError: '',
@@ -191,6 +191,7 @@
     $('headerColor').closest('label').querySelector('span').textContent = announcement ? 'Event text' : 'Header';
 
     $('open-preview').textContent = social ? 'View full-size image ↗' : 'View full-size card ↗';
+    preloadFrames();
     syncBackgroundControls();
     if (state.catalog) updateEventNote();
   }
@@ -507,23 +508,46 @@
     return state.rendererPromise;
   }
 
+  // One request per frame per page: the loader fetches the published PNG and checks it
+  // against the registry. A failure stays explicit (no other design is substituted)
+  // and is not kept, so choosing that frame again tries once more.
+  function loadFrame(event, role, background = false) {
+    const key = `${event}/${role}`;
+    if (!state.frames.has(key)) {
+      if (!state.frameLoader) state.frameLoader = import('/preview/events/frame-loader.js');
+      // Background loads must not compete with the frame or profile being shown.
+      const fetcher = background ? (url, init) => fetch(url, { ...init, priority: 'low' }) : undefined;
+      const frame = state.frameLoader.then(module => module.loadEventFrame(event, role, fetcher)).then(data => {
+        if (typeof data !== 'string') throw new Error('Missing frame artwork.');
+        return data;
+      }).catch(() => {
+        if (state.frames.get(key) === frame) state.frames.delete(key);
+        throw new Error('The artwork for this frame could not be loaded. Reload the page to try again.');
+      });
+      state.frames.set(key, frame);
+    }
+    return state.frames.get(key);
+  }
+
   function frameArtwork(params) {
     const event = params.get('event'), role = params.get('role');
     // Without artwork for the edition, the renderer reports that no frame is available.
     if (params.get('layout') !== 'avatar' || !state.catalog?.events.find(item => item.id === event)?.frameRoles) return Promise.resolve(null);
-    // One request per frame per page: the loader fetches the published PNG and checks
-    // it against the registry. A failure stays explicit: no other design is substituted.
-    const key = `${event}/${role}`;
-    if (!state.frames.has(key)) {
-      if (!state.frameLoader) state.frameLoader = import('/preview/events/frame-loader.js');
-      state.frames.set(key, state.frameLoader.then(module => module.loadEventFrame(event, role)).then(data => {
-        if (typeof data !== 'string') throw new Error('Missing frame artwork.');
-        return data;
-      }).catch(() => {
-        throw new Error('The artwork for this frame could not be loaded. Reload the page to try again.');
-      }));
-    }
-    return state.frames.get(key);
+    return loadFrame(event, role);
+  }
+
+  // Switching "I'm…" must not wait on the network. The first time an edition is selected
+  // for an avatar frame, fetch the selected role's artwork, then every other role's behind
+  // it. Once per edition per page: a frame that failed is fetched again only when chosen.
+  function preloadFrames() {
+    if ($('layout').value !== 'avatar') return;
+    const event = $('event').value, selected = $('role').value;
+    const roles = state.catalog?.events.find(item => item.id === event)?.frameRoles;
+    if (!roles?.includes(selected) || state.preloaded.has(event)) return;
+    state.preloaded.add(event);
+    loadFrame(event, selected).catch(() => {}).then(() => {
+      for (const role of roles) if (role !== selected) loadFrame(event, role, true).catch(() => {});
+    });
   }
 
   function abortable(promise, signal) {
