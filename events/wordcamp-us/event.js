@@ -1,5 +1,5 @@
-// Canonical, manually verified official announcements as of 2026-10-01.
+// No edition is offered: planning for WordCamp US 2027 has not started. Add the
+// edition record here when it does, then its avatar frames (see ../README.md).
+// The theme, artwork and fonts in this folder are kept ready for it.
 // Participation is self-reported; this catalogue does not certify event roles.
-export const editions = Object.freeze([
-  { id: 'us-2027', name: 'WordCamp US', year: 2027, label: 'WordCamp US', dateLabel: '', location: '', url: 'https://us.wordcamp.org/2027/', note: 'Early planning; check the official site for confirmed dates and location', checkedAt: '2026-10-01' }
-].map(Object.freeze));
+export const editions = Object.freeze([]);

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { DOMParser } from 'linkedom';
 import { renderCard } from '../shared/svg.js';
 import { renderSocial } from '../shared/social.js';
+import { eventFrameData } from './frame-artwork.mjs';
 import { LIMITS, inspectImage, fitWithin, coverCrop, backgroundGeometry, loadBackground, applyBackground } from '../public/background.js';
 
 const concat = (...parts) => Uint8Array.from(parts.flatMap(p => [...p]));
@@ -58,8 +59,8 @@ test('normalization and crop geometry obey area, side and cover limits', () => {
 });
 test('geometry retains classic inset/rounding and annular rather than full-circle bounds', () => {
   assert.deepEqual(backgroundGeometry('rect', { x: .5, y: .5, width: 719, height: 199, rx: 12 }), { kind: 'rect', x: .5, y: .5, width: 719, height: 199, rx: 12, ry: 12 });
-  assert.deepEqual(backgroundGeometry('ring', { cx: 540, cy: 540, r: 463, 'stroke-width': 126 }), { kind: 'ring', x: 14, y: 14, width: 1052, height: 1052, innerRadius: 400, outerRadius: 526 });
-  assert.throws(() => backgroundGeometry('ring', { r: 5, 'stroke-width': 20 }));
+  // Avatar frames are finished artwork; only card rectangles take a background.
+  assert.throws(() => backgroundGeometry('ring', { cx: 540, cy: 540, r: 463, 'stroke-width': 126 }));
 });
 test('no background preserves every original byte without requiring browser globals', () => {
   const text = '  <svg>\n<!-- untouched -->\n</svg>  ';
@@ -149,11 +150,11 @@ test('corrupt decoder output is closed without allocating normalization canvas',
   let closed = 0; const canvases = browser(t, async () => ({ width: 99999, height: 1, close() { closed++; } }));
   await assert.rejects(loadBackground(file(png()))); assert.equal(closed, 1); assert.equal(canvases.length, 0);
 });
-for (const layout of ['classic', 'profile', 'square', 'announcement', 'avatar']) {
+for (const layout of ['classic', 'profile', 'square', 'announcement']) {
   test(`${layout}: trusted SVG compositing retains content and encodes only a freshly cropped raster`, async t => {
     const canvases = browser(t);
     const bg = await loadBackground(file(png()));
-    const source = ['avatar', 'announcement'].includes(layout) ? renderSocial(profile, { layout, avatar: false }) : renderCard(profile, { layout });
+    const source = layout === 'announcement' ? renderSocial(profile, { layout, avatar: false }) : renderCard(profile, { layout });
     const svg = applyBackground(source, bg, { x: 100, y: 0, zoom: 2, tint: '#123ABC', tintOpacity: .4 });
     const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
     const image = doc.querySelector('image[data-local-background]'); assert.ok(image);
@@ -175,13 +176,6 @@ for (const layout of ['classic', 'profile', 'square', 'announcement', 'avatar'])
       assert.equal(image.getAttribute('x'), '0.5'); assert.equal(image.getAttribute('width'), '719');
       assert.ok(doc.querySelector('clipPath[data-local-background] rect[rx="12"]'));
       assert.ok(doc.querySelector('rect[data-local-background][fill="none"]'));
-    }
-    if (layout === 'avatar') {
-      const ring = doc.querySelector('[data-field="ring"]'); assert.equal(image.previousElementSibling, ring);
-      assert.equal(image.getAttribute('x'), '14'); assert.equal(image.getAttribute('width'), '1052');
-      assert.ok(doc.querySelector('clipPath[data-local-background] path[clip-rule="evenodd"]'));
-      assert.ok(crop.calls.some(c => c[0] === 'clip' && c[1] === 'evenodd'));
-      assert.equal(doc.querySelector('[data-field="avatar"]'), null);
     }
     bg.dispose();
   });
@@ -269,21 +263,11 @@ test('scratch encoding failures still release crop canvas without disposing the 
   assert.throws(() => applyBackground(renderCard(profile), bg), /encode failed/);
   assert.equal(canvases[1].width, 0); assert.equal(bg.canvas.width, 40); bg.dispose();
 });
-test('avatar photo markup and both original ring/text layers survive composition', async t => {
-  browser(t); const bg = await loadBackground(file(png()));
-  const avatar = 'data:image/png;base64,cGhvdG8=';
-  const original = renderSocial(profile, { layout: 'avatar' }, avatar);
-  const doc = new DOMParser().parseFromString(applyBackground(original, bg), 'image/svg+xml');
-  assert.equal(doc.querySelector('[data-field="avatar"] image').getAttribute('href'), avatar);
-  assert.equal(doc.querySelectorAll('[data-field="ring"]').length, 1);
-  const image = doc.querySelector('[data-local-background-image]');
-  assert.equal(image.previousElementSibling.getAttribute('data-field'), 'ring');
-  assert.equal(image.nextElementSibling.getAttribute('stroke-width'), '2');
-  assert.ok(doc.querySelector('[data-field="event"] textPath')); assert.ok(doc.querySelector('[data-field="role"] textPath')); bg.dispose();
-});
 test('malformed SVG and absent background geometry fail without crop allocation', async t => {
   const canvases = browser(t); const bg = await loadBackground(file(png()));
-  for (const svg of ['<not-svg/>', '<svg/>', '<svg data-layout="avatar"><rect width="10" height="10"/></svg>']) assert.throws(() => applyBackground(svg, bg));
+  // Avatar-frame artwork is opaque outside the photo; the builder never composites behind it.
+  const frames = ['asia-2027', 'europe-2027'].flatMap(event => ['circle', 'square'].map(shape => renderSocial(profile, { layout: 'avatar', event, shape }, null, eventFrameData(event, 'attendee'))));
+  for (const svg of ['<not-svg/>', '<svg/>', '<svg data-layout="avatar"><rect width="10" height="10"/></svg>', ...frames]) assert.throws(() => applyBackground(svg, bg));
   assert.equal(canvases.length, 1); bg.dispose();
 });
 test('header fuzzing and all truncation offsets terminate with controlled failures', () => {

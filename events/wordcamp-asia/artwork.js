@@ -1,4 +1,6 @@
 // Independent artwork adaptations, not official event logos or supplied designs.
+// The asia-2027 avatar frame uses the designers' PNGs in frames/. frameDecoration
+// is only drawn by tools/draw-event-frames.mjs, for an edition without their artwork.
 // Original vector adaptations of observed botanical accents, not event logos.
 function leaf(x, y, scale) {
   return `<g transform="translate(${x} ${y}) scale(${scale})"><path d="M 0 78 C -76 10 -48 -66 44 -98 C 66 -22 73 42 0 78 Z" fill="#00513B"/><path d="M 0 78 Q 12 -10 44 -98 M 9 27 L -28 -4 M 17 0 L 52 -23 M 25 -30 L -3 -52 M 34 -58 L 54 -62" fill="none" stroke="#8BB1C4" stroke-width="2"/></g>`;

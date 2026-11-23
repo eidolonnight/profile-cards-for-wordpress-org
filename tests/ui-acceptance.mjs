@@ -14,12 +14,15 @@ const empty = async page => {
 
 export async function assertDownloadOnlyActions(page) {
   assert.equal(await page.locator('#copy-card, #copy-markdown, #copy-fallback, #copy-text, #copy-png, .copy-actions').count(), 0);
-  assert.deepEqual(await page.locator('#exports button').evaluateAll(nodes => nodes.map(node => node.id)), ['download-png', 'download-svg']);
+  // An avatar frame is a photo under PNG artwork, so it offers the PNG only.
+  const frame = await page.locator('#layout').inputValue() === 'avatar';
+  assert.deepEqual(await page.locator('#exports button').evaluateAll(nodes => nodes.filter(node => !node.hidden).map(node => node.id)), frame ? ['download-png'] : ['download-png', 'download-svg']);
   assert.equal(await page.getByRole('button', { name: /Copy Card URL|Copy Markdown/i }).count(), 0);
 }
 
 // Reconstruct the public query contract from form controls only, never app state
 // or a generated share URL. Call after the intended profile has been submitted.
+// The avatar frame has builder settings but no card route: /card refuses that query.
 // Browser-only background uploads intentionally have no public query equivalent.
 export async function cardURLFromControls(page) {
   const parameters = await page.evaluate(() => {
@@ -32,8 +35,9 @@ export async function cardURLFromControls(page) {
       avatar: ['avatar'],
       announcement: ['avatar', 'name', 'handle', 'eventDetails'],
     };
+    // Avatar frames are finished artwork: they send a shape and no colors.
     const colors = {
-      avatar: ['foreground', 'headerColor'],
+      avatar: [],
       announcement: ['headerColor', 'nameColor', 'subHeaderColor', 'foreground'],
     };
     const params = new URLSearchParams({ username: value('username'), layout });
@@ -43,6 +47,7 @@ export async function cardURLFromControls(page) {
     }
     if (layout === 'avatar' || layout === 'announcement') {
       params.set('event', value('event')); params.set('role', value('role'));
+      if (layout === 'avatar') params.set('shape', value('shape'));
     } else if (layout === 'profile' || layout === 'square') {
       const omitted = [...document.querySelectorAll('#team-options input[type="checkbox"]:not(:checked)')].map(input => input.value);
       if (omitted.length) params.set('omitTeams', omitted.join(','));

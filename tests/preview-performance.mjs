@@ -53,7 +53,7 @@ try {
   await page.evaluate(() => {
     const image = document.getElementById('card-preview');
     const start = event => {
-      if ((event.type === 'click' && event.target.closest('#preset-light, #preset-dark')) || (event.type === 'change' && event.target.id === 'avatar')) {
+      if ((event.type === 'click' && event.target.closest('#preset-light, #preset-dark')) || (event.type === 'change' && ['avatar', 'shape'].includes(event.target.id))) {
         window.__previewMeasurement = { start: performance.now() };
       }
     };
@@ -67,16 +67,18 @@ try {
       }))).catch(() => {});
     }).observe(image, { attributes: true, attributeFilter: ['src'] });
   });
-  for (const layout of ['profile', 'square', 'avatar', 'announcement']) {
+  // The avatar format is measured twice, switching shape (it has no palette or photo
+  // toggle): the default edition's organizer artwork and one of the interim frames.
+  for (const [layout, event] of [['profile'], ['square'], ['avatar', 'asia-2027'], ['avatar', 'europe-2027'], ['announcement']]) {
     if (await page.locator('#layout').inputValue() !== layout) { await page.locator('#layout').selectOption(layout); await ready(); }
-    const actions = await page.locator('#avatar').isEnabled()
-      ? ['dark', 'light', 'hide-avatar', 'show-avatar']
-      : ['dark', 'light'];
+    if (event && await page.locator('#event').inputValue() !== event) { await page.locator('#event').selectOption(event); await ready(); }
+    const actions = layout === 'avatar' ? ['square', 'circle'] : [...(await page.locator('#preset-dark').isVisible() ? ['dark', 'light'] : []), ...(await page.locator('#avatar').isEnabled() ? ['hide-avatar', 'show-avatar'] : [])];
     for (const action of actions) {
       const previous = await page.locator('#card-preview').getAttribute('src');
       await page.evaluate(() => performance.clearResourceTimings());
       const started = performance.now();
-      if (action.endsWith('avatar')) await page.locator('#avatar').setChecked(action === 'show-avatar');
+      if (layout === 'avatar') await page.locator('#shape').selectOption(action);
+      else if (action.endsWith('avatar')) await page.locator('#avatar').setChecked(action === 'show-avatar');
       else await page.locator('#preset-' + action).click();
       await ready();
       await page.waitForFunction(old => document.getElementById('card-preview').src !== old, previous);
@@ -85,11 +87,11 @@ try {
       await page.waitForFunction(() => Number.isFinite(window.__previewMeasurement?.elapsedMs));
       const interactionMs = await page.evaluate(() => window.__previewMeasurement.elapsedMs);
       const resources = await page.evaluate(() => performance.getEntriesByType('resource').filter(entry => {
-        const url = new URL(entry.name); return url.origin === location.origin && (['/json', '/card', '/events', '/preview-data'].includes(url.pathname) || url.pathname.startsWith('/preview/'));
+        const url = new URL(entry.name); return url.origin === location.origin && (['/json', '/card', '/events', '/preview-data'].includes(url.pathname) || url.pathname.startsWith('/frames/') || url.pathname.startsWith('/preview/'));
       }).map(entry => ({ path: new URL(entry.name).pathname, durationMs: entry.duration, ttfbMs: entry.responseStart - entry.requestStart, bodyMs: entry.responseEnd - entry.responseStart, transferBytes: entry.transferSize, decodedBytes: entry.decodedBodySize })));
-      report.samples.push({ layout, action, elapsedMs, interactionMs, resources });
+      report.samples.push({ layout, ...(event ? { event } : {}), action, elapsedMs, interactionMs, resources });
       await save();
-      console.log(JSON.stringify({ layout, action, elapsedMs: Math.round(elapsedMs), interactionMs: Math.round(interactionMs), requests: resources.length }));
+      console.log(JSON.stringify({ layout, ...(event ? { event } : {}), action, elapsedMs: Math.round(elapsedMs), interactionMs: Math.round(interactionMs), requests: resources.length }));
     }
   }
   assert.equal(report.samples.length, 14);

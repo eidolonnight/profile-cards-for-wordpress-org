@@ -119,7 +119,7 @@ try {
     await ready();
     assert.equal(await page.locator('#team-items').evaluate(node => !node.disabled), true);
     report.checks.push('Profile content is a fieldset legend with one two-column grid, all selected defaults and selected teams; individual all-empty guard and link-only recovery work; developer disclosure removed without losing privacy copy');
-    const applicable = { profile: profileControls, square: profileControls, classic: ['avatar', 'badges', 'link'], avatar: ['avatar'], announcement: ['avatar', 'name', 'handle', 'eventDetails'] };
+    const applicable = { profile: profileControls, square: profileControls, classic: ['avatar', 'badges', 'link'], avatar: [], announcement: ['avatar', 'name', 'handle', 'eventDetails'] };
     for (const layout of ['profile', 'square', 'classic', 'avatar', 'announcement']) {
       await page.locator('#layout').selectOption(layout); await ready();
       const social = ['avatar', 'announcement'].includes(layout);
@@ -137,14 +137,21 @@ try {
         await page.locator('#layout').focus(); await page.keyboard.press('Tab');
         assert.equal(await page.evaluate(() => document.activeElement.id), 'event');
         await page.keyboard.press('Tab'); assert.equal(await page.evaluate(() => document.activeElement.id), 'role');
+        // The avatar frame adds a shape and has no profile content to choose.
+        assert.equal(await page.locator('#shape').isVisible(), layout === 'avatar');
+        assert.equal(await page.locator('#display-settings').isVisible(), layout !== 'avatar');
+        assert.equal(await page.locator('#download-svg').isVisible(), layout !== 'avatar', 'an avatar frame downloads as a PNG only');
+        if (layout === 'avatar') { await page.keyboard.press('Tab'); assert.equal(await page.evaluate(() => document.activeElement.id), 'shape'); assert.equal(await page.locator('#shape').inputValue(), 'circle'); }
         assert.equal(await page.locator('#eventDetails').isVisible(), layout === 'announcement');
         const eventBox = await page.locator('#event-settings').boundingBox(), profileBox = await page.locator('#profile-form').boundingBox();
         assert.ok(profileBox.y + profileBox.height <= eventBox.y);
       }
       await capture(layout, 390); report.layouts.push(layout);
-      if (layout === 'announcement') {
+      if (social) {
         assert.equal(await page.locator('#avatar').isChecked(), true);
         assert.equal(await page.locator('#avatar').isDisabled(), true);
+        const fields = await page.locator('#card-preview').evaluate(async image => new DOMParser().parseFromString(await (await fetch(image.src)).text(), 'image/svg+xml').querySelectorAll('[data-field="avatar"]').length);
+        assert.equal(fields, 1, `${layout} always includes the photo`);
       } else {
         await page.locator('#avatar').uncheck(); await ready();
         const fields = await page.locator('#card-preview').evaluate(async image => new DOMParser().parseFromString(await (await fetch(image.src)).text(), 'image/svg+xml').querySelectorAll('[data-field="avatar"]').length);
@@ -154,9 +161,9 @@ try {
     for (const layout of Object.keys(applicable)) {
       await page.locator('#layout').selectOption(layout); await ready();
       for (const id of applicable[layout]) assert.equal(await page.locator('#' + id).isChecked(), id !== 'avatar' || layout === 'announcement', `${layout}/${id} persisted choice`);
-      if (layout !== 'announcement') { await page.locator('#avatar').check(); await ready(); }
+      if (!['avatar', 'announcement'].includes(layout)) { await page.locator('#avatar').check(); await ready(); }
     }
-    report.checks.push('All five layouts default every applicable control on; avatar omissions persist in formats where allowed while the social card requires avatar and name; irrelevant controls remain hidden and disabled');
+    report.checks.push('All five layouts default every applicable control on; avatar omissions persist in formats where allowed while both WordCamp formats require the photo and the social card the name; irrelevant controls remain hidden and disabled');
     await page.goto(origin + '/create?username=eidolonnight&layout=profile&header=false&name=false&badges=false&link=false');
     assert.doesNotMatch(await page.locator('#status').innerText(), /Some URL settings were invalid/);
     await page.locator('#create-button').click(); await ready();

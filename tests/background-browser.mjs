@@ -64,9 +64,11 @@ const download = async (page, type, label) => {
   const item = await pending, path = evidence + '/' + label + '.' + type;
   await item.saveAs(path); return readFile(path);
 };
-const verifyExport = async (page, label) => {
+// An avatar frame downloads as a PNG only: its pixels are compared with the displayed image.
+const verifyExport = async (page, label, { svgDownload = true } = {}) => {
   const preview = await svgSource(page);
-  const svg = await download(page, 'svg', label), png = await download(page, 'png', label);
+  assert.equal(await page.locator('#download-svg').isVisible(), svgDownload);
+  const svg = svgDownload ? await download(page, 'svg', label) : Buffer.from(preview), png = await download(page, 'png', label);
   assert.equal(hash(svg), hash(preview), 'SVG download must equal the displayed SVG');
   assert.ok(png.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])));
   const pixels = await page.evaluate(async ({ svg, png }) => {
@@ -145,18 +147,29 @@ try {
 
   for (const layout of ['profile', 'square', 'classic', 'avatar', 'announcement']) {
     await page.locator('#layout').selectOption(layout); await ready(page);
-    if (layout === 'avatar') { await page.locator('#avatar').uncheck(); await ready(page); }
+    if (layout === 'avatar') {
+      // Avatar frames are finished artwork: the local background selected for the other
+      // formats is neither offered nor composited behind them, in either shape or for
+      // any edition, and nothing is sent.
+      for (const [event, shape] of [['asia-2027', 'circle'], ['asia-2027', 'square'], ['europe-2027', 'circle'], ['europe-2027', 'square']]) {
+        await page.locator('#event').selectOption(event); await page.locator('#shape').selectOption(shape); await ready(page);
+        assert.equal(await page.locator('#customize-colors').isVisible(), false);
+        const sent = report.requests.length;
+        const frame = await verifyExport(page, `frame-${event}-${shape}`, { svgDownload: false });
+        assert.match(frame.svg, /data-field="frame"/); assert.doesNotMatch(frame.svg, /data-local-background|LOCAL_BACKGROUND_METADATA_DO_NOT_TRANSMIT|private-background-marker/);
+        assert.equal(frame.pixels.png.corner[3], shape === 'square' ? 255 : 0); assert.equal(frame.pixels.png.center[3], 255, 'the photo is always included');
+        assert.equal(report.requests.length, sent, 'exporting a frame sends nothing');
+      }
+      continue;
+    }
     const result = await verifyExport(page, 'background-' + layout);
     assert.match(result.svg, /data-local-background="true"/);
     assert.doesNotMatch(result.svg, /LOCAL_BACKGROUND_METADATA_DO_NOT_TRANSMIT|private-background-marker/);
-    if (layout === 'avatar') {
-      assert.equal(result.pixels.png.corner[3], 0);
-      assert.equal(result.pixels.png.center[3], 0, 'Ring-only background must not fill the transparent center');
-    }
     if (layout === 'classic') assert.equal(result.pixels.png.corner[3], 0, 'Rounded legacy corner must remain transparent');
   }
-  assert.deepEqual(new Set(report.exports.filter(x => x.label.startsWith('background-')).map(x => x.label)), new Set(['profile', 'square', 'classic', 'avatar', 'announcement'].map(x => 'background-' + x)));
-  await check('All five formats export matching preview/SVG/PNG pixels; avatar ring and legacy corners preserve transparency');
+  assert.deepEqual(new Set(report.exports.filter(x => x.label.startsWith('background-')).map(x => x.label)), new Set(['profile', 'square', 'classic', 'announcement'].map(x => 'background-' + x)));
+  assert.equal(report.exports.filter(x => x.label.startsWith('frame-')).length, 4);
+  await check('Four formats export matching preview/SVG/PNG pixels with the background; avatar frames never take it; legacy corners preserve transparency');
 
   await page.locator('#layout').selectOption('profile'); await ready(page);
   for (const fixture of [jpeg, webp]) { const n = report.requests.length; await select(page, fixture); assert.ok(await backgroundImage(page)); assert.equal(report.requests.length, n); }

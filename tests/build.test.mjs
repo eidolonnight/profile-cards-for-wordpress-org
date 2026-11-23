@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { EVENT_MODULES } from '../tools/browser-modules.mjs';
+import { EVENT_MODULES, FRAME_FILES } from '../tools/browser-modules.mjs';
 
 const source = fileURLToPath(new URL('../', import.meta.url));
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -51,7 +51,7 @@ test('repository build matches immutable staging exactly and excludes source-onl
   const before = await inventory(project);
   const result = run(); assert.ifError(result.error); assert.equal(result.status, 0, result.stderr);
   const output = JSON.parse(result.stdout);
-  assert.equal(output.outputDirectory, 'dist'); assert.equal(output.files, 38 + EVENT_MODULES.length * 2);
+  assert.equal(output.outputDirectory, 'dist'); assert.equal(output.files, 39 + EVENT_MODULES.length * 2 + FRAME_FILES.length);
   assert.match(output.assetRevision, /^[a-f0-9]{64}$/);
   const releases = join(base, 'comparison'); const release = join(releases, 'release-01');
   const staged = spawnSync(process.execPath, [join(project, 'tools/stage.mjs'), join(release, 'site')], {

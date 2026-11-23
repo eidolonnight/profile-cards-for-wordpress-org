@@ -18,7 +18,7 @@ function omissionList(value, key) {
 
 export function queryOptions(request) {
   const params = new URL(request.url).searchParams;
-  const supported = new Set(['username', 'layout', 'event', 'role', 'eventDetails', 'avatar', 'badges', 'badgeNames', 'header', 'link', 'refresh', 'omitTeams', 'omitSocial', ...HEADER_OPTIONS, ...Object.keys(DEFAULT_COLORS)]);
+  const supported = new Set(['username', 'layout', 'event', 'role', 'eventDetails', 'shape', 'avatar', 'badges', 'badgeNames', 'header', 'link', 'refresh', 'omitTeams', 'omitSocial', ...HEADER_OPTIONS, ...Object.keys(DEFAULT_COLORS)]);
   for (const key of params.keys()) {
     if (!supported.has(key) || params.getAll(key).length !== 1) throw new ProfileError('invalid_parameter', `Unsupported or repeated parameter: ${key.slice(0, 40)}.`);
   }
@@ -29,12 +29,21 @@ export function queryOptions(request) {
   const social = layout === 'avatar' || layout === 'announcement';
   const modern = layout === 'profile' || layout === 'square';
   if (!social && ['event', 'role', 'eventDetails'].some(key => params.has(key))) throw new ProfileError('invalid_parameter', 'Event options require a social layout.');
+  if (layout !== 'avatar' && params.has('shape')) throw new ProfileError('invalid_parameter', 'shape requires the avatar layout.');
   const options = { username, layout, omitTeams: omissionList(params.get('omitTeams'), 'omitTeams'), omitSocial: omissionList(params.get('omitSocial'), 'omitSocial') };
   if (social) {
     options.event = params.get('event') ?? 'asia-2027';
     options.role = params.get('role') ?? 'attendee';
     if (!EVENTS.some(event => event.id === options.event)) throw new ProfileError('invalid_option', 'Select a supported event.');
     if (!ROLES.some(role => role.id === options.role)) throw new ProfileError('invalid_option', 'Select a supported participation role.');
+    if (layout === 'avatar') {
+      // Avatar frames are PNG artwork per edition and role; never substitute another design.
+      const { frameRoles } = EVENTS.find(event => event.id === options.event);
+      if (!frameRoles) throw new ProfileError('invalid_option', 'Avatar frames are not available for this event yet.');
+      if (!frameRoles.includes(options.role)) throw new ProfileError('invalid_option', 'Select a participation role available for this event\u2019s avatar frame.');
+      options.shape = params.get('shape') ?? 'circle';
+      if (!['circle', 'square'].includes(options.shape)) throw new ProfileError('invalid_option', 'shape must be circle or square.');
+    }
   }
   for (const [key, fallback] of Object.entries({ avatar: true, badges: layout === 'classic' || modern, header: true, link: modern, refresh: false, ...Object.fromEntries(HEADER_OPTIONS.map(key => [key, true])), badgeNames: modern, ...(social ? { eventDetails: true } : {}) })) {
     const value = params.get(key);
@@ -42,6 +51,7 @@ export function queryOptions(request) {
     options[key] = value === null ? fallback : value === 'true';
   }
   if (layout === 'announcement' && (!options.avatar || !options.name)) throw new ProfileError('invalid_option', 'WordCamp social cards require avatar and name.');
+  if (layout === 'avatar' && !options.avatar) throw new ProfileError('invalid_option', 'WordCamp avatar frames require avatar.');
   for (const [key, fallback] of Object.entries({ ...DEFAULT_COLORS, ...(social ? EVENTS.find(event => event.id === options.event).colors : {}) })) {
     const value = params.get(key) ?? (['profile', 'square'].includes(layout) && key === 'linkColor' ? options.subHeaderColor : fallback);
     if (!/^[0-9a-f]{6}$/i.test(value)) throw new ProfileError('invalid_color', `${key} must be a six-digit hex color without #.`);

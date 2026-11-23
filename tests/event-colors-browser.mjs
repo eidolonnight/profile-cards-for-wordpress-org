@@ -32,44 +32,64 @@ try {
     record.sourceHashes[path] = createHash('sha256').update(await r.body()).digest('hex');
   }
   const catalog = await (await context.request.get(origin + '/events')).json();
-  assert.deepEqual(catalog.events.map(e => e.id), ['asia-2027', 'europe-2027', 'us-2027', 'india-2027']);
+  // WordCamp US has no edition yet, so it is not offered.
+  assert.deepEqual(catalog.events.map(e => e.id), ['asia-2027', 'europe-2027', 'india-2027']);
   for (const e of catalog.events) {
     assert.deepEqual(Object.keys(e.colors).sort(), [...keys].sort());
     for (const k of keys) assert.match(e.colors[k], /^[0-9A-F]{6}$/);
     assert.equal(typeof e.styleNote, 'string'); assert.ok(e.styleNote.length);
   }
-  assert.equal(catalog.events.find(e => e.id === 'us-2027').dateLabel, '');
-  assert.equal(catalog.events.find(e => e.id === 'us-2027').location, '');
+  // Unannounced details stay empty rather than being filled in.
+  assert.equal(catalog.events.find(e => e.id === 'india-2027').location, '');
   const response = await page.goto(origin); assert.equal(response.status(), 200);
   if (process.env.EXPECTED_VERSION) assert.equal(response.headers()['x-spacefast-version'], process.env.EXPECTED_VERSION);
   await assertInitialDemo(page); assert.equal(await page.locator('#preset-event').isHidden(), true);
   await page.locator('#username').fill('eidolonnight'); await page.locator('#create-button').click(); await ready();
   for (const layout of ['avatar', 'announcement']) {
     await page.locator('#layout').selectOption(layout); await ready();
-    if (!await page.locator('#customize-colors').evaluate(n => n.open)) await page.locator('#customize-colors summary').click();
-    assert.equal(await page.locator('#preset-event').isVisible(), true);
+    // Color controls belong to the social card; avatar frames are finished artwork.
+    const artwork = layout === 'avatar';
+    if (!artwork) {
+      if (!await page.locator('#customize-colors').evaluate(n => n.open)) await page.locator('#customize-colors summary').click();
+      assert.equal(await page.locator('#preset-event').isVisible(), true);
+    }
     for (const event of catalog.events) {
       await page.locator('#event').selectOption(event.id); await ready();
+      // Frame artwork is not recolored; the automatic palette still follows the event.
+      assert.ok(event.frameRoles?.length, `${event.id}: every edition has avatar-frame artwork`);
+      assert.equal(await page.locator('#customize-colors').isVisible(), !artwork, `${layout}/${event.id} color controls`);
+      assert.equal(await page.locator('#frame-note').isVisible(), artwork, `${layout}/${event.id} artwork note`);
       await assertColors(event.colors, `${layout}/${event.id} automatic source palette`);
       assert.equal(await page.locator('#event-note').isHidden(), true);
       assert.equal(await page.locator('#event-note').textContent(), '');
       assert.equal(await page.locator('#event-source').getAttribute('href'), event.url);
       const svg = await preview();
       assert.ok(parseHTML(svg).document.querySelector('[data-field="avatar"] image'), 'the real profile photo must remain embedded, not silently fall back to initials');
+      assert.equal(parseHTML(svg).document.querySelectorAll('image[data-field="frame"]').length, artwork ? 1 : 0);
       const file = `${event.id}-${layout}`;
-      const saved = await download('#download-svg', file + '.svg'); assert.equal(saved.toString(), svg);
+      // An avatar frame downloads as a PNG only; the other format also offers its SVG.
+      assert.equal(await page.locator('#download-svg').isVisible(), !artwork);
+      if (!artwork) { const saved = await download('#download-svg', file + '.svg'); assert.equal(saved.toString(), svg); }
       const png = await download('#download-png', file + '.png');
       assert.equal(png.readUInt32BE(16), 1080); assert.equal(png.readUInt32BE(20), layout === 'avatar' ? 1080 : 1350);
       await assertDownloadedPNG(page, png);
       const url = await cardURLFromControls(page); const direct = await context.request.get(url);
-      assert.equal(direct.status(), 200); assert.equal(await direct.text(), svg, 'actual preview/export must match canonical server');
       const css = parseHTML(svg).document.querySelector('style').textContent;
       const hash = 'sha256-' + createHash('sha256').update(css).digest('base64');
-      assert.ok(direct.headers()['content-security-policy'].includes(`'${hash}'`), 'exact event-specific CSS must be authorized');
-      const documentPage = await context.newPage(); await documentPage.goto(url); await documentPage.evaluate(async () => { await Promise.all([...document.fonts].map(face => face.load())); await document.fonts.ready; });
-      const faces = await documentPage.evaluate(() => [...document.fonts].map(f => ({ family: f.family, weight: f.weight, status: f.status })));
-      assert.ok(faces.length >= 1 && faces.every(f => f.status === 'loaded'), JSON.stringify(faces));
-      await documentPage.close();
+      let faces = [];
+      if (artwork) {
+        // Avatar frames are composed in the browser from the published PNG; the card route has none.
+        assert.equal(direct.status(), 400);
+        const published = await context.request.get(`${origin}/frames/${event.id}-${await page.locator('#role').inputValue()}.png`); assert.equal(published.status(), 200);
+        assert.equal(parseHTML(svg).document.querySelector('image[data-field="frame"]').getAttribute('href'), 'data:image/png;base64,' + (await published.body()).toString('base64'));
+      } else {
+        assert.equal(direct.status(), 200); assert.equal(await direct.text(), svg, 'actual preview/export must match canonical server');
+        assert.ok(direct.headers()['content-security-policy'].includes(`'${hash}'`), 'exact event-specific CSS must be authorized');
+        const documentPage = await context.newPage(); await documentPage.goto(url); await documentPage.evaluate(async () => { await Promise.all([...document.fonts].map(face => face.load())); await document.fonts.ready; });
+        faces = await documentPage.evaluate(() => [...document.fonts].map(f => ({ family: f.family, weight: f.weight, status: f.status })));
+        assert.ok(faces.length >= 1 && faces.every(f => f.status === 'loaded'), JSON.stringify(faces));
+        await documentPage.close();
+      }
       await page.setViewportSize({ width: 390, height: 950 });
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
       await page.screenshot({ path: `${evidence}/${file}-mobile.png`, fullPage: true });
@@ -78,11 +98,11 @@ try {
         const violations = await page.evaluate(async () => (await axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa'] } })).violations.map(v => ({ id: v.id, nodes: v.nodes.map(n => n.target) })));
         record.accessibility.push({ layout, event: event.id, violations }); assert.deepEqual(violations, []);
       }
-      record.cases.push({ layout, event: event.id, colors: await values(), fontFaces: faces, svgSha256: createHash('sha256').update(svg).digest('hex'), pngSha256: createHash('sha256').update(png).digest('hex'), styleHash: hash });
+      record.cases.push({ layout, event: event.id, artwork, colors: await values(), fontFaces: faces, svgSha256: createHash('sha256').update(svg).digest('hex'), pngSha256: createHash('sha256').update(png).digest('hex'), styleHash: hash });
     }
   }
-  assert.equal(record.cases.length, 8); assert.equal(new Set(record.cases.map(c => c.layout + '/' + c.event)).size, 8);
-  record.checks.push('All four events in both formats: automatic colors, actual downloads, canonical SVG parity, exact CSP and embedded fonts, mobile overflow');
+  assert.equal(record.cases.length, 6); assert.equal(new Set(record.cases.map(c => c.layout + '/' + c.event)).size, 6);
+  record.checks.push('All three offered events in both formats: automatic colors, actual downloads and mobile overflow; social cards match the canonical SVG with exact CSP and embedded fonts; avatar frames embed the published PNG and download as PNG only');
   await page.locator('#foreground').evaluate(n => { n.value = '#2e3429'; n.dispatchEvent(new Event('input', { bubbles: true })); }); await ready();
   await page.locator('#event').selectOption('asia-2027'); await ready();
   const asia = catalog.events.find(e => e.id === 'asia-2027');

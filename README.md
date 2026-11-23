@@ -13,18 +13,28 @@ Everything for each event lives in one folder under [`events/`](events/), shared
 - [WordCamp Asia](events/wordcamp-asia/)
 - [WordCamp Europe](events/wordcamp-europe/)
 - [WordCamp India](events/wordcamp-india/)
-- [WordCamp US](events/wordcamp-us/)
+- [WordCamp US](events/wordcamp-us/) (not offered)
 
 Each folder contains:
 
 - `theme.js`: colors and styling choices.
 - `artwork.js`: the SVG artwork and event headings.
 - `fonts/`: font files, licenses and source records.
+- `frames/`: avatar-frame PNGs, one per role. Yours once you send them; stand-ins drawn here until then.
 - `event.js`: edition details, including dates and official links.
 
 Give your coding agent the event folder, official event website and any approved brand assets. Describe what should change and ask for a focused pull request with before-and-after previews. For example:
 
 > Update the WordCamp Asia theme in `events/wordcamp-asia/` to match these brand guidelines: [link]. Read `AGENTS.md` and the event guide first. Keep other events unchanged, preserve existing edition links, and include previews of the avatar frame and social card in the PR.
+
+Avatar frames come from you. Send one PNG per role:
+
+- Square, 1080 × 1080 px. Up to 2048 × 2048 px accepted.
+- The same size for every role.
+- At most 1 MiB per file.
+- A transparent circle for the photo, in the same place on every role.
+
+Downloads are 1080 × 1080 px PNGs, round or square. See WordCamp Asia's [`frames/`](events/wordcamp-asia/frames/).
 
 Use artwork and fonts you have permission to share, and retain their credits and licenses. Keep future editions in the same event folder. The [event guide](events/README.md) has the details your agent needs.
 
