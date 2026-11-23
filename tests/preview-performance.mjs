@@ -53,7 +53,7 @@ try {
   await page.evaluate(() => {
     const image = document.getElementById('card-preview');
     const start = event => {
-      if ((event.type === 'click' && event.target.closest('#preset-light, #preset-dark')) || (event.type === 'change' && ['avatar', 'shape'].includes(event.target.id))) {
+      if ((event.type === 'click' && event.target.closest('#preset-light, #preset-dark')) || (event.type === 'change' && ['avatar', 'shape', 'role'].includes(event.target.id))) {
         window.__previewMeasurement = { start: performance.now() };
       }
     };
@@ -67,17 +67,22 @@ try {
       }))).catch(() => {});
     }).observe(image, { attributes: true, attributeFilter: ['src'] });
   });
-  // The avatar format is measured twice, switching shape (it has no palette or photo
-  // toggle): the default edition's organizer artwork and one of the interim frames.
+  // The avatar format is measured twice (it has no palette or photo toggle): the default
+  // edition's organizer artwork and one of the interim frames. Each switches to a role not
+  // yet shown on this page and back, then shape. Selecting the edition preloads every
+  // role's artwork, so once the page is idle a first role switch fetches nothing.
   for (const [layout, event] of [['profile'], ['square'], ['avatar', 'asia-2027'], ['avatar', 'europe-2027'], ['announcement']]) {
     if (await page.locator('#layout').inputValue() !== layout) { await page.locator('#layout').selectOption(layout); await ready(); }
     if (event && await page.locator('#event').inputValue() !== event) { await page.locator('#event').selectOption(event); await ready(); }
-    const actions = layout === 'avatar' ? ['square', 'circle'] : [...(await page.locator('#preset-dark').isVisible() ? ['dark', 'light'] : []), ...(await page.locator('#avatar').isEnabled() ? ['hide-avatar', 'show-avatar'] : [])];
+    const role = layout === 'avatar' ? await page.locator('#role').inputValue() : null;
+    if (layout === 'avatar') await page.waitForLoadState('networkidle');
+    const actions = layout === 'avatar' ? ['role:' + (role === 'speaker' ? 'volunteer' : 'speaker'), 'role:' + role, 'square', 'circle'] : [...(await page.locator('#preset-dark').isVisible() ? ['dark', 'light'] : []), ...(await page.locator('#avatar').isEnabled() ? ['hide-avatar', 'show-avatar'] : [])];
     for (const action of actions) {
       const previous = await page.locator('#card-preview').getAttribute('src');
       await page.evaluate(() => performance.clearResourceTimings());
       const started = performance.now();
-      if (layout === 'avatar') await page.locator('#shape').selectOption(action);
+      if (action.startsWith('role:')) await page.locator('#role').selectOption(action.slice(5));
+      else if (layout === 'avatar') await page.locator('#shape').selectOption(action);
       else if (action.endsWith('avatar')) await page.locator('#avatar').setChecked(action === 'show-avatar');
       else await page.locator('#preset-' + action).click();
       await ready();
@@ -94,7 +99,7 @@ try {
       console.log(JSON.stringify({ layout, ...(event ? { event } : {}), action, elapsedMs: Math.round(elapsedMs), interactionMs: Math.round(interactionMs), requests: resources.length }));
     }
   }
-  assert.equal(report.samples.length, 14);
+  assert.equal(report.samples.length, 18);
   assert.deepEqual(report.errors, []);
   const sorted = report.samples.map(item => item.elapsedMs).sort((a, b) => a - b);
   const native = report.samples.map(item => item.interactionMs).sort((a, b) => a - b);

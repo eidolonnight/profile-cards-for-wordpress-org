@@ -386,11 +386,17 @@ test('OS appearance has a no-JavaScript CSS fallback and explicit overrides', ()
 // editions have none, exercises the limits.
 const partialCatalog = () => ({ events: [{ ...EVENTS[0], frameRoles: ['attendee', 'speaker'] }, ...EVENTS.slice(1).map(({ frameRoles, ...event }) => event)], roles: ROLES });
 const partialFetcher = async () => ({ ok: true, json: async () => partialCatalog() });
-const frameEditor = async (search = '?layout=avatar') => {
-  const e = editor(search, partialFetcher);
+// The frame loader stands in before the catalog arrives, as the builder starts
+// loading artwork as soon as an edition is selected.
+const idleLoader = () => Promise.resolve({ loadEventFrame: async () => 'data:image/png;base64,AAAA' });
+const frameEditor = async (search = '?layout=avatar', loader = idleLoader(), fetcher = partialFetcher) => {
+  const e = editor(search, fetcher);
+  e.state.frameLoader = loader;
   await e.loadEvents();
   return e;
 };
+// Let queued frame loads and their follow-ups settle.
+const settle = async () => { for (let turn = 0; turn < 20; turn++) await Promise.resolve(); };
 const pick = (e, event, role) => { e.$('event').value = event; e.$('role').value = role; e.syncControls(); };
 
 test('avatar frames offer a shape and only roles with artwork, with no color or background controls', async () => {
@@ -476,15 +482,88 @@ test('shared links restore a valid shape and reject it anywhere else', async () 
   }
 });
 
+test('selecting an avatar-frame edition preloads every role, the selected one first, and only for avatar frames', async () => {
+  const loads = []; const requests = [];
+  const loader = Promise.resolve({ loadEventFrame: async (event, role, fetcher) => {
+    loads.push([event, role, fetcher ? 'background' : 'selected']);
+    if (fetcher) await fetcher(`/frames/${event}-${role}.png`, { credentials: 'same-origin' });
+    return `data:image/png;base64,${role}`;
+  } });
+  const fetcher = async (url, init) => { requests.push([String(url), init]); return { ok: true, json: async () => ({ events: EVENTS, roles: ROLES }) }; };
+  const e = editor('?layout=avatar', fetcher);
+  e.state.frameLoader = loader;
+  await e.loadEvents();
+  const [first, second] = EVENTS; const others = ROLES.map(role => role.id).filter(id => id !== 'volunteer');
+  pick(e, first.id, 'volunteer'); await settle();
+  // No profile is needed: the artwork is on its way while the username is typed.
+  assert.equal(e.state.profile, null);
+  assert.deepEqual(loads, [[first.id, 'volunteer', 'selected'], ...others.map(role => [first.id, role, 'background'])]);
+  // Background loads ask the browser for low priority; the selected frame does not.
+  assert.deepEqual(requests.filter(([url]) => url.startsWith('/frames/')).map(([url, init]) => [url, init.priority, init.credentials]), others.map(role => [`/frames/${first.id}-${role}.png`, 'low', 'same-origin']));
+  // Every "I'm…" choice for that edition is now ready: switching loads nothing more.
+  for (const role of ROLES) pick(e, first.id, role.id);
+  e.change('shape', 'square'); await settle();
+  assert.equal(loads.length, ROLES.length);
+  // Another edition is fetched when it is selected, again with its selected role first.
+  pick(e, second.id, 'sponsor'); await settle();
+  assert.deepEqual(loads.slice(ROLES.length).map(([event, role, kind]) => `${event}/${role}/${kind}`), [`${second.id}/sponsor/selected`, ...ROLES.map(role => role.id).filter(id => id !== 'sponsor').map(role => `${second.id}/${role}/background`)]);
+  // The social card needs no frame artwork.
+  const card = editor('?layout=announcement', fetcher);
+  card.state.frameLoader = Promise.resolve({ loadEventFrame: async () => { throw new Error('must not load'); } });
+  await card.loadEvents(); pick(card, first.id, 'speaker'); await settle();
+  assert.equal(card.state.frames.size, 0);
+});
+
+test('a busy preview shows an animated indicator that reduced motion stills', () => {
+  const { document: page } = parseHTML(html);
+  const symbol = page.querySelector('#preview-stage > #empty-state > .empty-symbol');
+  assert.equal(symbol.getAttribute('aria-hidden'), 'true', 'the indicator is decorative: the status line announces progress');
+  const rule = css.match(/\.preview-stage\[aria-busy="true"\] \.empty-symbol\{([^}]*)\}/)?.[1] ?? '';
+  assert.match(rule, /animation:preview-spin [\d.]+s linear infinite/);
+  assert.match(rule, /border-radius:50%/);
+  assert.match(rule, /font-size:0/, 'the idle symbol is hidden while the ring spins');
+  assert.match(css, /@keyframes preview-spin\{to\{transform:rotate\(360deg\)\}\}/);
+  assert.match(css, /@media ?\(prefers-reduced-motion:reduce\)\{[^}]*animation:none!important/);
+  // Every wait in the preview marks the stage busy, so the indicator covers them all.
+  for (const title of ['Loading the Matt demo…', 'Finding your profile…', 'Making your card…']) {
+    const at = app.indexOf(`placeholder('${title}'`);
+    assert.ok(at > 0, title);
+    assert.match(app.slice(at - 80, at), /setAttribute\('aria-busy', 'true'\)/, title);
+  }
+});
+
+test('a frame that fails to preload stays quiet and is tried again when chosen', async () => {
+  let attempts = 0;
+  const loader = Promise.resolve({ loadEventFrame: async (event, role) => { if (role === 'speaker' && ++attempts === 1) throw new Error('offline'); return `data:image/png;base64,${role}`; } });
+  const e = await frameEditor('?layout=avatar', loader);
+  pick(e, EVENTS[0].id, 'attendee'); await settle();
+  assert.equal(attempts, 1, 'speaker was preloaded once and failed');
+  // Later control changes do not keep fetching a frame that failed in the background.
+  for (const shape of ['square', 'circle']) e.change('shape', shape);
+  pick(e, EVENTS[0].id, 'attendee'); await settle();
+  assert.equal(attempts, 1);
+  assert.notEqual(e.$('status').dataset.kind, 'error', 'a background failure is not reported');
+  assert.deepEqual([...e.state.frames.keys()], [`${EVENTS[0].id}/attendee`], 'the failure is not kept');
+  const profile = { userName: 'fixture', name: 'Fixture', badges: [], teams: [], fetchedAt: '2024-08-07T06:05:04.000Z' };
+  e.state.profile = profile; e.state.username = 'fixture';
+  e.state.previewInputs = { profile, fingerprint: JSON.stringify(profile), avatars: new Map([320, 1024].map(size => [size, { data: null, status: 'initials' }])) };
+  const received = [];
+  e.state.rendererPromise = Promise.resolve((...args) => { received.push(args); return '<svg xmlns="http://www.w3.org/2000/svg"/>'; });
+  pick(e, EVENTS[0].id, 'speaker');
+  await e.renderCard(e.state.renderVersion);
+  assert.equal(attempts, 2);
+  assert.equal(e.state.ready, true, e.$('status').textContent);
+  assert.equal(received.at(-1)[3], 'data:image/png;base64,speaker');
+});
+
 test('frame artwork loads once per role, skips local backgrounds and fails explicitly', async () => {
-  const e = await frameEditor();
+  const received = []; const loads = [];
+  const e = await frameEditor('?layout=avatar', Promise.resolve({ loadEventFrame: async (event, role) => { loads.push([event, role]); return `data:image/png;base64,${role}`; } }));
   pick(e, EVENTS[0].id, 'speaker');
   const profile = { userName: 'fixture', name: 'Fixture', badges: [], teams: [], fetchedAt: '2024-08-07T06:05:04.000Z' };
   e.state.profile = profile; e.state.username = 'fixture';
   e.state.previewInputs = { profile, fingerprint: JSON.stringify(profile), avatars: new Map([320, 1024].map(size => [size, { data: null, status: 'initials' }])) };
-  const received = []; const loads = [];
   e.state.rendererPromise = Promise.resolve((...args) => { received.push(args); return '<svg xmlns="http://www.w3.org/2000/svg"/>'; });
-  e.state.frameLoader = Promise.resolve({ loadEventFrame: async (event, role) => { loads.push([event, role]); return `data:image/png;base64,${role}`; } });
   // A local background selected for another format must neither block nor alter this frame.
   e.state.background = { dispose() {} };
   e.state.backgroundError = 'Could not use this background.';
@@ -492,14 +571,15 @@ test('frame artwork loads once per role, skips local backgrounds and fails expli
   e.scheduleRender();
   assert.notEqual(e.$('empty-title').textContent, 'Check your background image.');
   for (let pass = 0; pass < 2; pass++) { await e.renderCard(e.state.renderVersion); assert.equal(e.state.ready, true, e.$('status').textContent); }
-  assert.deepEqual(loads, [[EVENTS[0].id, 'speaker']]);
+  // The selected role's artwork, then the edition's other role in the background: each once.
+  assert.deepEqual(loads, [[EVENTS[0].id, 'speaker'], [EVENTS[0].id, 'attendee']]);
   assert.deepEqual(received.map(args => args[3]), ['data:image/png;base64,speaker', 'data:image/png;base64,speaker']);
   assert.equal(new URLSearchParams(received[0][1]).has('foreground'), false);
   assert.equal(new URLSearchParams(received[0][1]).get('shape'), 'circle');
   assert.match(e.$('card-preview').alt, /I'm speaking\. Round avatar frame\./);
   pick(e, EVENTS[0].id, 'attendee'); e.change('shape', 'square');
   await e.renderCard(e.state.renderVersion);
-  assert.deepEqual(loads, [[EVENTS[0].id, 'speaker'], [EVENTS[0].id, 'attendee']]);
+  assert.equal(loads.length, 2, 'the preloaded frame is used, not fetched again');
   assert.equal(received.at(-1)[3], 'data:image/png;base64,attendee');
   assert.equal(new URLSearchParams(received.at(-1)[1]).get('shape'), 'square', 'one artwork payload serves both shapes');
   assert.match(e.$('card-preview').alt, /Square avatar frame\./);
@@ -516,14 +596,13 @@ test('frame artwork loads once per role, skips local backgrounds and fails expli
   assert.equal(e.$('status').textContent, 'must not composite behind frame artwork');
   // Missing or failed artwork never renders a substitute design.
   for (const loader of [Promise.reject(new Error('offline')), Promise.resolve({ loadEventFrame: async () => null }), Promise.resolve({})]) {
-    const failing = await frameEditor();
+    loader.catch(() => {});
+    const failing = await frameEditor('?layout=avatar', loader);
     pick(failing, EVENTS[0].id, 'attendee');
     failing.state.profile = profile; failing.state.username = 'fixture';
     failing.state.previewInputs = e.state.previewInputs;
     let rendered = 0;
     failing.state.rendererPromise = Promise.resolve(() => { rendered++; return '<svg xmlns="http://www.w3.org/2000/svg"/>'; });
-    loader.catch(() => {});
-    failing.state.frameLoader = loader;
     await failing.renderCard(failing.state.renderVersion);
     assert.equal(failing.state.ready, false);
     assert.equal(rendered, 0);
