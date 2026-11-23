@@ -1,12 +1,14 @@
-import { queryOptions, getProfile, getAvatarData, apiHeaders, errorResponse } from './_profile.js';
+import { queryOptions, getProfile, getAvatarData, apiHeaders, errorResponse, ProfileError } from './_profile.js';
 import { renderCard } from './_svg.js';
 import { renderSocial, socialStyleHash } from './_social.js';
 import { FONT_STYLE_HASH } from './_fonts.js';
 export async function GET(request) {
   try {
     const options = queryOptions(request);
+    // Avatar frames are composed in the builder from the published PNGs; this route has no artwork.
+    if (options.layout === 'avatar') throw new ProfileError('invalid_option', 'layout must be classic, profile, square or announcement.');
     const profile = await getProfile(options.username, { refresh: options.refresh });
-    const social = options.layout === 'avatar' || options.layout === 'announcement';
+    const social = options.layout === 'announcement';
     const showAvatar = options.avatar && (social || options.header);
     const avatar = showAvatar ? await getAvatarData(profile.avatar, globalThis.fetch, { size: social ? 1024 : 320 }) : null;
     const csp = options.layout === 'profile' || options.layout === 'square' || social

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, readFile, writeFile, symlink, cp, readdir } from 'node:fs/promises';
 import { join, posix } from 'node:path';
-import { EVENT_MODULES, BROWSER_MODULES, browserModuleSource } from '../tools/browser-modules.mjs';
+import { EVENT_MODULES, BROWSER_MODULES, FRAME_FILES, browserModuleSource } from '../tools/browser-modules.mjs';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
@@ -16,6 +16,7 @@ const source = fileURLToPath(new URL('../', import.meta.url));
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 const stripRevision = text => text.replace(/\?v=[a-f0-9]{64}/g, '');
 const sourcePath = path => path.startsWith('preview/') ? new Map(BROWSER_MODULES.map(([source, target]) => [target, source])).get(path)
+  : path.startsWith('frames/') ? new Map(FRAME_FILES.map(([source, target]) => [target, source])).get(path)
   : path === 'create.html' ? 'public/index.html'
   : path.startsWith('functions/') || path.startsWith('shared/') || path.startsWith('events/') || ['sf.jsonc', 'LICENSE'].includes(path) ? path : `public/${path}`;
 async function stage(home, name, entry = script) {
@@ -52,12 +53,14 @@ test('stage versions every browser asset edge without changing canonical sources
   const references = [...app.matchAll(/(['"])(\/(?:background\.js|matt-demo\.js|preview\/preview\.js)(?:\?[^'"]*)?)\1/g)].map(match => match[2]);
   assert.deepEqual(references, [`/background.js?v=${revision}`, `/preview/preview.js?v=${revision}`, `/preview/preview.js?v=${revision}`, `/matt-demo.js?v=${revision}`]);
   assert.ok(app.includes(`fetch('/preview/preview.js?v=${revision}', { method: 'HEAD'`));
+  assert.ok(app.includes(`import('/preview/events/frame-loader.js?v=${revision}')`));
+  assert.equal(app.split('/preview/events/frame-loader.js').length, 2);
   assert.equal(stripRevision(app), await readFile(join(source, 'public/app.js'), 'utf8'));
   const demo = await readFile(join(root, 'matt-demo.js'), 'utf8');
   assert.match(demo, new RegExp(`avatarPath: '/matt-demo-avatar\\.jpg\\?v=${revision}'`));
   assert.equal(stripRevision(demo), await readFile(join(source, 'public/matt-demo.js'), 'utf8'));
   const manifest = JSON.parse(await readFile(join(release, 'source-manifest.json')));
-  let imports = 0;
+  let imports = 0; let lazyImports = 0;
   for (const item of manifest) {
     const bytes = await readFile(join(root, item.path));
     assert.equal(bytes.length, item.bytes, item.path);
@@ -71,6 +74,8 @@ test('stage versions every browser asset edge without changing canonical sources
         assert.match(match[2], new RegExp(`^\\.{1,2}/[a-z/-]+\\.js\\?v=${revision}$`));
         assert.ok(manifest.some(entry => entry.path === posix.normalize(posix.join(posix.dirname(item.path), match[2].split('?')[0]))));
       }
+      // No staged browser module loads another lazily; frame artwork is fetched as PNG files.
+      lazyImports += [...text.matchAll(/\bimport\(/g)].length;
       assert.equal(text, browserModuleSource(item.path, original.toString(), revision), item.path);
     } else if (!['index.html', 'create.html', 'app.js', 'matt-demo.js'].includes(item.path)) {
       assert.deepEqual(bytes, original, item.path);
@@ -78,8 +83,14 @@ test('stage versions every browser asset edge without changing canonical sources
   }
   const expectedImports = (await Promise.all(BROWSER_MODULES.map(async ([from]) => [...(await readFile(join(source, from), 'utf8')).matchAll(/^(?:import|export)\s+[^;]+?\s+from\s+(['"])([^'"]+)\1/gm)].length))).reduce((sum, count) => sum + count, 0);
   assert.equal(imports, expectedImports); assert.ok(imports > 0);
+  assert.equal(lazyImports, 0);
+  // The frame loader asks for a published PNG by a URL its registry hash pins, independent of the release revision.
+  const loader = await readFile(join(root, 'preview/events/frame-loader.js'), 'utf8');
+  assert.ok(loader.includes(`import { EVENT_FRAMES } from './frames.js?v=${revision}';`));
+  assert.ok(loader.includes('`/frames/${event}-${role}.png?v=${frame.sha256}`'));
   assert.deepEqual(await Promise.all(['public', 'shared', 'functions', 'events'].map(path => snapshot(join(source, path)))), before);
-  assert.equal(manifest.length, 38 + EVENT_MODULES.length * 2);
+  // Fixed files (including the browser-only frame loader), both copies of each event module, and one PNG per frame.
+  assert.equal(manifest.length, 39 + EVENT_MODULES.length * 2 + FRAME_FILES.length);
   const stagedPaths = (await readdir(root, { recursive: true, withFileTypes: true }))
     .filter(entry => entry.isFile()).map(entry => join(entry.parentPath, entry.name).slice(root.length + 1)).sort();
   assert.deepEqual(stagedPaths, manifest.map(item => item.path).sort());
@@ -115,7 +126,7 @@ test('asset revision is deterministic and changes for canonical content in an is
   // No timestamps, release names, absolute source paths, or non-allowlisted files enter the key.
   await writeFile(join(fixture, 'unlisted.txt'), 'not a release input');
   assert.equal((await stage(home, 'stable-03', entry)).output.assetRevision, first.output.assetRevision);
-  for (const [index, path] of ['public/styles.css', 'public/favicon.png', 'public/matt-demo-avatar.jpg', 'shared/options.js', 'functions/card.js', 'package.json', 'events/wordcamp-asia/theme.js', 'events/wordcamp-europe/artwork.js', 'events/wordcamp-india/event.js', 'events/fonts.js'].entries()) {
+  for (const [index, path] of ['public/styles.css', 'public/favicon.png', 'public/matt-demo-avatar.jpg', 'shared/options.js', 'functions/card.js', 'package.json', 'events/wordcamp-asia/theme.js', 'events/wordcamp-europe/artwork.js', 'events/wordcamp-india/event.js', 'events/fonts.js', 'events/frames.js', 'events/frame-loader.js', FRAME_FILES[0][0], FRAME_FILES.at(-1)[0]].entries()) {
     const target = join(fixture, path); const original = await readFile(target);
     await writeFile(target, Buffer.concat([original, Buffer.from('\n')]));
     const changed = await stage(home, `changed-0${index}`, entry);
@@ -136,8 +147,14 @@ test('stage has exact manifest hashes, no dependency metadata, and refuses an ex
   const home = await temp(); const release = join(home, 'echion/projects/wp-profile-cards/releases/release-01'); const root = join(release, 'site');
   assert.equal(run(home, root).status, 0);
   const manifest = JSON.parse(await readFile(join(release, 'source-manifest.json')));
-  assert.deepEqual(manifest.map(x => x.path).sort(), ['index.html', 'app.js', 'matt-demo.js', 'matt-demo-avatar.jpg', 'theme.js', 'background.js', 'styles.css', 'site-logo.png', 'favicon.png', 'site-favicon.ico', 'create.html', 'THIRD-PARTY-NOTICES.txt', 'FONT-LICENSES.txt', 'LICENSE', 'sf.jsonc', 'functions/_fonts.js', 'functions/_profile.js', 'functions/_svg.js', 'functions/json.js', 'functions/card.js', 'functions/_events.js', 'functions/_social.js', 'functions/events.js', 'functions/preview-data.js', 'preview/preview.js', 'preview/options.js', 'preview/svg.js', 'preview/social.js', 'preview/fonts.js', 'preview/events.js', 'preview/event-fonts.js', 'preview/event-themes.js', 'shared/options.js', 'shared/svg.js', 'shared/social.js', 'shared/fonts.js', 'shared/events.js', 'robots.txt', ...EVENT_MODULES, ...EVENT_MODULES.map(path => `preview/${path}`)].sort());
-  assert.equal(manifest.some(x => /package|test|README|manifest|provenance|\.(woff2|ttf)$/.test(x.path)), false);
+  assert.deepEqual(manifest.map(x => x.path).sort(), ['index.html', 'app.js', 'matt-demo.js', 'matt-demo-avatar.jpg', 'theme.js', 'background.js', 'styles.css', 'site-logo.png', 'favicon.png', 'site-favicon.ico', 'create.html', 'THIRD-PARTY-NOTICES.txt', 'FONT-LICENSES.txt', 'LICENSE', 'sf.jsonc', 'functions/_fonts.js', 'functions/_profile.js', 'functions/_svg.js', 'functions/json.js', 'functions/card.js', 'functions/_events.js', 'functions/_social.js', 'functions/events.js', 'functions/preview-data.js', ...FRAME_FILES.map(([, to]) => to), 'preview/events/frame-loader.js', 'preview/preview.js', 'preview/options.js', 'preview/svg.js', 'preview/social.js', 'preview/fonts.js', 'preview/events.js', 'preview/event-fonts.js', 'preview/event-themes.js', 'shared/options.js', 'shared/svg.js', 'shared/social.js', 'shared/fonts.js', 'shared/events.js', 'robots.txt', ...EVENT_MODULES, ...EVENT_MODULES.map(path => `preview/${path}`)].sort());
+  const frames = FRAME_FILES.map(([, to]) => to);
+  assert.equal(manifest.some(x => /package|test|README|manifest|provenance|\.(woff2|ttf|png)$/.test(x.path) && !['site-logo.png', 'favicon.png', ...frames].includes(x.path)), false);
+  // Frame artwork ships as its own PNG files, byte for byte, and nowhere else: no payload
+  // modules, no backend copy of the browser-only loader, nothing else from a frames/ folder.
+  assert.ok(frames.length > 0 && frames.every(path => /^frames\/[a-z]+-20\d{2}-[a-z]+\.png$/.test(path)));
+  for (const [from, to] of FRAME_FILES) assert.deepEqual(await readFile(join(root, to)), await readFile(join(source, from)), to);
+  assert.equal(manifest.some(x => x.path.includes('frame-data') || x.path === 'events/frame-loader.js' || x.path === 'functions/_frames.js' || /^(?:preview\/)?events\/.*\/frames\//.test(x.path)), false);
   for (const item of manifest) assert.equal(createHash('sha256').update(await readFile(join(root, item.path))).digest('hex'), item.sha256);
   for (const name of ['options.js', 'svg.js', 'social.js', 'fonts.js', 'events.js']) {
     const revision = JSON.parse(await readFile(join(release, 'asset-revision.json'))).revision;
@@ -227,7 +244,15 @@ test('local adapter serves exactly the shared allowlist and preview-data route w
     assert.equal(await licenseResponse.text(), await readFile(new URL('../LICENSE', import.meta.url), 'utf8'));
     const licenseHead = await fetch(`${origin}/LICENSE`, { method: 'HEAD' });
     assert.equal(licenseHead.status, 200); assert.equal(await licenseHead.text(), '');
-    for (const path of ['/AGENTS.md', '/CLAUDE.md', '/docs/event-themes.md', '/.gitignore', '/.env', '/functions/_profile.js', '/functions/preview-data.js', '/package.json', '/shared/options.js', '/shared/fonts.js', '/events/README.md', '/events/fonts.js', '/events/wordcamp-asia/theme.js', '/preview/events/README.md', '/preview/events/wordcamp-asia/fonts/manifest.json', '/preview/events/wordcamp-asia/fonts/Faculty-Glyphic-400.woff2', '/preview/events/wordcamp-asia/README.md']) assert.equal((await fetch(origin + path)).status, 404, path);
+    for (const path of ['/AGENTS.md', '/CLAUDE.md', '/docs/event-themes.md', '/.gitignore', '/.env', '/functions/_profile.js', '/functions/preview-data.js', '/package.json', '/shared/options.js', '/shared/fonts.js', '/events/README.md', '/events/fonts.js', '/events/wordcamp-asia/theme.js', '/preview/events/README.md', '/preview/events/wordcamp-asia/fonts/manifest.json', '/preview/events/wordcamp-asia/fonts/Faculty-Glyphic-400.woff2', '/preview/events/wordcamp-asia/README.md', '/events/frames.js', '/events/frame-data.js', '/preview/events/frame-data.js', '/events/frame-loader.js', '/events/wordcamp-asia/frames/manifest.json', '/events/wordcamp-asia/frames/asia-2027-attendee.png', '/preview/events/wordcamp-asia/frames/manifest.json', '/preview/events/wordcamp-asia/frames/asia-2027-attendee.png', '/frames/', '/frames/manifest.json', '/frames/asia-2027-keynote.png', '/frames/asia-1999-attendee.png', '/frames/../package.json', '/frames/%2e%2e/package.json', '/frames/asia-2027-attendee.png/extra']) assert.equal((await fetch(origin + path)).status, 404, path);
+    // Avatar-frame artwork is served as the committed PNG files, from the exact registry allowlist.
+    for (const [from, name] of FRAME_FILES) {
+      const response = await fetch(`${origin}/${name}?v=test`);
+      assert.equal(response.status, 200, name); assert.equal(response.headers.get('Content-Type'), 'image/png');
+      assert.equal(response.headers.get('X-Content-Type-Options'), 'nosniff'); assert.equal(response.headers.get('Cache-Control'), 'no-store');
+      assert.deepEqual(Buffer.from(await response.arrayBuffer()), await readFile(new URL(`../${from}`, import.meta.url)), name);
+    }
+    const frameHead = await fetch(`${origin}/${FRAME_FILES[0][1]}`, { method: 'HEAD' }); assert.equal(frameHead.status, 200); assert.equal(await frameHead.text(), '');
     const invalid = await fetch(`${origin}/preview-data?size=0`); assert.equal(invalid.status, 400); assert.equal((await invalid.json()).error.code, 'invalid_username');
     assert.equal((await fetch(`${origin}/preview-data?username=example&size=0`, { method: 'POST' })).status, 405);
   } finally { child.kill(); await exited; }

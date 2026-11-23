@@ -8,7 +8,7 @@ const base = process.env.TEST_ORIGIN || 'http://127.0.0.1:4197';
 const evidence = process.env.EVIDENCE_DIR;
 if (!evidence) throw new Error('Set EVIDENCE_DIR outside hosting.');
 await mkdir(evidence, { recursive: true });
-const report = { origin: base, checks: [], equality: [], errors: [], externalOrigins: [] };
+const report = { origin: base, checks: [], equality: [], frames: [], errors: [], externalOrigins: [] };
 const save = () => writeFile(evidence + '/preview-browser-report.json', JSON.stringify(report, null, 2) + '\n');
 const check = async name => { report.checks.push(name); await save(); console.log(name); };
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', headless: true, args: ['--no-sandbox'] });
@@ -32,6 +32,17 @@ const fresh = async (page, username = 'eidolonnight') => {
 };
 const source = page => page.locator('#card-preview').evaluate(image => fetch(image.src).then(response => response.text()));
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
+// Avatar frames have no server rendering to compare with: the builder alone composes
+// them from the published PNG, and the card route refuses the same settings.
+const frameOnly = async (page, action) => {
+  await assertDownloadOnlyActions(page);
+  const local = await source(page);
+  assert.match(local, /data-layout="avatar"/); assert.match(local, /<image data-field="frame" /); assert.match(local, /<g data-field="avatar"><defs>/);
+  const refused = await context.request.get(await cardURLFromControls(page)); assert.equal(refused.status(), 400);
+  assert.equal((await refused.json()).error.code, 'invalid_option');
+  report.frames.push({ action, bytes: Buffer.byteLength(local) });
+  await save();
+};
 const parity = async (page, layout, action) => {
   await assertDownloadOnlyActions(page);
   const url = await cardURLFromControls(page);
@@ -53,18 +64,30 @@ try {
   for (const layout of ['profile', 'square', 'classic', 'avatar', 'announcement']) {
     await page.locator('#layout').selectOption(layout); await ready(page);
     const actions = layout === 'announcement' ? ['dark', 'light'] : ['dark', 'light', 'hide-avatar', 'show-avatar'];
-    for (const action of actions) {
-      const before = traffic.length;
-      if (action.endsWith('avatar')) await page.locator('#avatar').setChecked(action === 'show-avatar');
-      else await selectPalette(page, action);
-      await ready(page);
-      assert.equal(traffic.length, before, `${layout}/${action} made a network request`);
-      await parity(page, layout, action);
+    // Avatar frames are PNG artwork with a shape, no palette and always the photo:
+    // organizer artwork for the default edition, one of the project's interim frames for Europe.
+    const variants = layout === 'avatar' ? [['asia-2027', ['square', 'circle']], ['europe-2027', ['square', 'circle']]] : [[null, actions]];
+    for (const [event, steps] of variants) {
+      if (event) { await page.locator('#event').selectOption(event); await ready(page); }
+      const artwork = (await source(page)).includes('data-field="frame"');
+      assert.equal(artwork, layout === 'avatar');
+      assert.equal(await page.locator('#customize-colors').isVisible(), !artwork);
+      assert.equal(await page.locator('#avatar').isVisible(), !artwork);
+      for (const action of steps) {
+        const before = traffic.length;
+        if (artwork) await page.locator('#shape').selectOption(action);
+        else if (action.endsWith('avatar')) await page.locator('#avatar').setChecked(action === 'show-avatar');
+        else await selectPalette(page, action);
+        await ready(page);
+        assert.equal(traffic.length, before, `${layout}/${action} made a network request`);
+        if (artwork) await frameOnly(page, `${event}/${action}`);
+        else await parity(page, layout, action);
+      }
     }
   }
-  assert.equal(report.equality.length, 18);
+  assert.equal(report.equality.length, 14); assert.equal(report.frames.length, 4);
   assert.deepEqual(traffic.filter(path => path.startsWith('/preview-data?')).map(path => new URL(path, base).searchParams.get('size')), ['all']);
-  await check('18 valid real-profile SVGs exactly equal canonical /card; one lookup preloads both photo variants; warm changes make zero requests');
+  await check('14 valid real-profile SVGs exactly equal canonical /card; 4 avatar frames render in the browser only and /card refuses them; one lookup preloads both photo variants; warm changes make zero requests');
   await page.locator('#layout').selectOption('profile'); await ready(page);
   const beforeRapid = traffic.length;
   await page.evaluate(() => {
@@ -199,6 +222,6 @@ try {
   assert.equal(streamedTraffic.filter(path => path.startsWith('/card?')).length, 0);
   await streamed.close(); await check('headerless oversized preview input is canceled by the incremental byte limit before the full stream is read');
   assert.deepEqual(report.errors, []); assert.deepEqual(report.externalOrigins, []);
-  assert.equal(report.equality.length, 21); report.pass = true;
+  assert.equal(report.equality.length, 17); report.pass = true;
 } catch (error) { report.pass = false; report.failure = error.stack; process.exitCode = 1; }
 finally { await browser.close(); await save(); console.log(JSON.stringify({ pass: report.pass, checks: report.checks, equalityCases: report.equality.length, errors: report.errors, failure: report.failure }, null, 2)); }

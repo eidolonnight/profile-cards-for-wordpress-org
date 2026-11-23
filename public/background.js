@@ -159,12 +159,6 @@ export function backgroundGeometry(kind, attributes) {
     if (!Number.isFinite(value)) throw invalid('Invalid SVG background geometry.');
     return value;
   };
-  if (kind === 'ring') {
-    const radius = positive(n('r')); const half = positive(n('stroke-width')) / 2;
-    const outerRadius = radius + half; const innerRadius = radius - half;
-    if (innerRadius <= 0) throw invalid('Invalid SVG ring geometry.');
-    return { kind, x: n('cx') - outerRadius, y: n('cy') - outerRadius, width: outerRadius * 2, height: outerRadius * 2, innerRadius, outerRadius };
-  }
   if (kind !== 'rect') throw invalid('Unsupported SVG background geometry.');
   const width = positive(n('width')); const height = positive(n('height'));
   const rx = n('rx', n('ry')); const ry = n('ry', rx);
@@ -262,24 +256,17 @@ export async function loadBackground(file) {
 function canvasClip(context, geometry) {
   const { width: w, height: h } = geometry;
   context.beginPath();
-  if (geometry.kind === 'ring') {
-    context.arc(w / 2, h / 2, geometry.outerRadius, 0, Math.PI * 2);
-    context.moveTo(w / 2 + geometry.innerRadius, h / 2);
-    context.arc(w / 2, h / 2, geometry.innerRadius, 0, Math.PI * 2);
-    context.clip('evenodd');
-  } else {
-    const { rx, ry } = geometry;
-    if (!rx || !ry) context.rect(0, 0, w, h);
-    else {
-      context.moveTo(rx, 0); context.lineTo(w - rx, 0);
-      context.ellipse(w - rx, ry, rx, ry, 0, -Math.PI / 2, 0);
-      context.lineTo(w, h - ry); context.ellipse(w - rx, h - ry, rx, ry, 0, 0, Math.PI / 2);
-      context.lineTo(rx, h); context.ellipse(rx, h - ry, rx, ry, 0, Math.PI / 2, Math.PI);
-      context.lineTo(0, ry); context.ellipse(rx, ry, rx, ry, 0, Math.PI, Math.PI * 1.5);
-      context.closePath();
-    }
-    context.clip();
+  const { rx, ry } = geometry;
+  if (!rx || !ry) context.rect(0, 0, w, h);
+  else {
+    context.moveTo(rx, 0); context.lineTo(w - rx, 0);
+    context.ellipse(w - rx, ry, rx, ry, 0, -Math.PI / 2, 0);
+    context.lineTo(w, h - ry); context.ellipse(w - rx, h - ry, rx, ry, 0, 0, Math.PI / 2);
+    context.lineTo(rx, h); context.ellipse(rx, h - ry, rx, ry, 0, Math.PI / 2, Math.PI);
+    context.lineTo(0, ry); context.ellipse(rx, ry, rx, ry, 0, Math.PI, Math.PI * 1.5);
+    context.closePath();
   }
+  context.clip();
 }
 function cropData(background, geometry, options) {
   const size = fitWithin(geometry.width, geometry.height, LIMITS.cropSide, LIMITS.cropPixels);
@@ -305,12 +292,6 @@ function node(doc, tag, attributes = {}) {
   for (const [name, value] of Object.entries(attributes)) element.setAttribute(name, String(value));
   return element;
 }
-function annulusPath(geometry) {
-  const { x, y, width, height, outerRadius: r, innerRadius: inner } = geometry;
-  const cx = x + width / 2; const cy = y + height / 2;
-  const circle = radius => `M ${cx - radius} ${cy} A ${radius} ${radius} 0 1 0 ${cx + radius} ${cy} A ${radius} ${radius} 0 1 0 ${cx - radius} ${cy} Z`;
-  return circle(r) + ' ' + circle(inner);
-}
 
 /** Synchronous trusted-renderer SVG composition; pass pristine renderer output. */
 export function applyBackground(svgText, background, controls = {}) {
@@ -321,24 +302,23 @@ export function applyBackground(svgText, background, controls = {}) {
   const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
   const root = doc.documentElement;
   if (root?.localName !== 'svg' || doc.querySelector('parsererror')) throw invalid('Invalid renderer SVG.');
-  const ring = root.getAttribute('data-layout') === 'avatar' ? root.querySelector('circle[data-field="ring"]') : null;
-  const base = ring || [...root.children].find(child => child.localName === 'rect');
-  if (!base || (root.getAttribute('data-layout') === 'avatar' && !ring)) throw invalid('The renderer SVG has no supported background.');
-  const geometry = backgroundGeometry(ring ? 'ring' : 'rect', Object.fromEntries([...base.attributes].map(attr => [attr.name, attr.value])));
+  // Avatar frames are finished artwork, opaque outside the photo: nothing to fill.
+  const base = root.getAttribute('data-layout') === 'avatar' ? null : [...root.children].find(child => child.localName === 'rect');
+  if (!base) throw invalid('The renderer SVG has no supported background.');
+  const geometry = backgroundGeometry('rect', Object.fromEntries([...base.attributes].map(attr => [attr.name, attr.value])));
   const data = cropData(background, geometry, options);
   const ids = new Set([...root.querySelectorAll('[id]')].map(element => element.getAttribute('id')));
   let id = 'local-background-clip'; let suffix = 0; while (ids.has(id)) id = `local-background-clip-${++suffix}`;
   const defs = node(doc, 'defs', { 'data-local-background': 'true' });
   const clip = node(doc, 'clipPath', { id, clipPathUnits: 'userSpaceOnUse', 'data-local-background': 'true' });
-  if (ring) clip.appendChild(node(doc, 'path', { d: annulusPath(geometry), 'clip-rule': 'evenodd' }));
-  else clip.appendChild(node(doc, 'rect', { x: geometry.x, y: geometry.y, width: geometry.width, height: geometry.height, rx: geometry.rx, ry: geometry.ry }));
+  clip.appendChild(node(doc, 'rect', { x: geometry.x, y: geometry.y, width: geometry.width, height: geometry.height, rx: geometry.rx, ry: geometry.ry }));
   defs.appendChild(clip); root.insertBefore(defs, root.firstChild);
   root.setAttribute('data-local-background', 'true');
   const image = node(doc, 'image', { x: geometry.x, y: geometry.y, width: geometry.width, height: geometry.height, preserveAspectRatio: 'none', 'clip-path': `url(#${id})`, href: data, 'data-local-background': 'true', 'data-local-background-image': 'true' });
   base.parentNode.insertBefore(image, base.nextSibling);
-  // Keep the existing solid fill/ring below transparent image pixels. Classic's
+  // Keep the existing solid fill below transparent image pixels. Classic's
   // inset border must also paint above the image, without adding any corner fill.
-  if (!ring && base.hasAttribute('stroke') && base.getAttribute('stroke') !== 'none') {
+  if (base.hasAttribute('stroke') && base.getAttribute('stroke') !== 'none') {
     const border = base.cloneNode(false); border.removeAttribute('id'); border.setAttribute('fill', 'none'); border.setAttribute('data-local-background', 'true');
     image.parentNode.insertBefore(border, image.nextSibling);
   }

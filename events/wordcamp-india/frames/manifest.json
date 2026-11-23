@@ -1,0 +1,89 @@
+{
+  "editions": {
+    "india-2027": {
+      "window": {
+        "cx": 540,
+        "cy": 540,
+        "r": 400
+      },
+      "roles": {
+        "attendee": "india-2027-attendee.png",
+        "speaker": "india-2027-speaker.png",
+        "volunteer": "india-2027-volunteer.png",
+        "organizer": "india-2027-organizer.png",
+        "sponsor": "india-2027-sponsor.png",
+        "mediapartner": "india-2027-mediapartner.png"
+      }
+    }
+  },
+  "source": "Interim frames drawn by this project with tools/draw-event-frames.mjs on 2026-11-23, from the project's own WordCamp India frame design. Not supplied by the event's organizers or designers.",
+  "rights": "Project-authored artwork under the project license (GPL-2.0-or-later); see LICENSING.md. It is an independent adaptation, not official event artwork, and grants no rights in the WordCamp or WordPress marks. Replace these files when the organizers supply frames.",
+  "assets": [
+    {
+      "path": "india-2027-attendee.png",
+      "sha256": "bebfa86f4f19468357e4c340fa4c0a1a2a4836d8641461405b3c60d0941c7b2f",
+      "bytes": 61457,
+      "width": 1080,
+      "height": 1080,
+      "sourceName": "india-2027-attendee.svg",
+      "sourceSha256": "4387d09628803e9c43a7cded176a9b5a191a56afbc5125ecbe6d88de42b7a566",
+      "sourceBytes": 282009,
+      "conversion": "Drawn as SVG by tools/draw-event-frames.mjs, rasterized at 1080 x 1080 on a transparent background with Google Chrome for Testing 153.0.8010.12. Then: lossless recompression with oxipng 9.1.1 (level 6, safe chunk stripping, RGBA kept)."
+    },
+    {
+      "path": "india-2027-speaker.png",
+      "sha256": "bc9080b91db54db4a99d8d6178cb942d18980911352af9eef0526a492742245d",
+      "bytes": 61017,
+      "width": 1080,
+      "height": 1080,
+      "sourceName": "india-2027-speaker.svg",
+      "sourceSha256": "9f4d9d2cdd4b460204c1561ca0dcfd5ca3d491c92d565108a0b9e6c623ac297e",
+      "sourceBytes": 282009,
+      "conversion": "Drawn as SVG by tools/draw-event-frames.mjs, rasterized at 1080 x 1080 on a transparent background with Google Chrome for Testing 153.0.8010.12. Then: lossless recompression with oxipng 9.1.1 (level 6, safe chunk stripping, RGBA kept)."
+    },
+    {
+      "path": "india-2027-volunteer.png",
+      "sha256": "6afedc2773f81c74b11705028a2f87e7aac04d2951bcb9053e33514052c171d0",
+      "bytes": 63777,
+      "width": 1080,
+      "height": 1080,
+      "sourceName": "india-2027-volunteer.svg",
+      "sourceSha256": "504a091087aef427abbcd26c6eb6e2369881e50dbf9163d587e5774827a31a53",
+      "sourceBytes": 282015,
+      "conversion": "Drawn as SVG by tools/draw-event-frames.mjs, rasterized at 1080 x 1080 on a transparent background with Google Chrome for Testing 153.0.8010.12. Then: lossless recompression with oxipng 9.1.1 (level 6, safe chunk stripping, RGBA kept)."
+    },
+    {
+      "path": "india-2027-organizer.png",
+      "sha256": "a9844bf546d1fb7d88490067400182eb0fb33b980344e8a8b092b6deb5ebe95f",
+      "bytes": 62048,
+      "width": 1080,
+      "height": 1080,
+      "sourceName": "india-2027-organizer.svg",
+      "sourceSha256": "606e482ffc6044cef3023d9974820c3c4943a0fbbf30c7184a1587f21126c389",
+      "sourceBytes": 282011,
+      "conversion": "Drawn as SVG by tools/draw-event-frames.mjs, rasterized at 1080 x 1080 on a transparent background with Google Chrome for Testing 153.0.8010.12. Then: lossless recompression with oxipng 9.1.1 (level 6, safe chunk stripping, RGBA kept)."
+    },
+    {
+      "path": "india-2027-sponsor.png",
+      "sha256": "20b853d380d12035c49c2c17625bb0700a8e16b9ad74b3d3ee02ab51c8e000e7",
+      "bytes": 62606,
+      "width": 1080,
+      "height": 1080,
+      "sourceName": "india-2027-sponsor.svg",
+      "sourceSha256": "e7ced7c1cd6a0fdcff70fbd8aeecc7f4b6589fa09f0f911d6e6fc26570d67d26",
+      "sourceBytes": 282011,
+      "conversion": "Drawn as SVG by tools/draw-event-frames.mjs, rasterized at 1080 x 1080 on a transparent background with Google Chrome for Testing 153.0.8010.12. Then: lossless recompression with oxipng 9.1.1 (level 6, safe chunk stripping, RGBA kept)."
+    },
+    {
+      "path": "india-2027-mediapartner.png",
+      "sha256": "4e695b2e6e82e1961d2a9d698b2299c5f656d112b853af3421c33de103ac1012",
+      "bytes": 65000,
+      "width": 1080,
+      "height": 1080,
+      "sourceName": "india-2027-mediapartner.svg",
+      "sourceSha256": "5b890a164b038059142142e835f3107781dd8230670fcc2edf20476dc3dbceb1",
+      "sourceBytes": 282019,
+      "conversion": "Drawn as SVG by tools/draw-event-frames.mjs, rasterized at 1080 x 1080 on a transparent background with Google Chrome for Testing 153.0.8010.12. Then: lossless recompression with oxipng 9.1.1 (level 6, safe chunk stripping, RGBA kept)."
+    }
+  ]
+}

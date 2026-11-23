@@ -1,0 +1,89 @@
+{
+  "editions": {
+    "europe-2027": {
+      "window": {
+        "cx": 540,
+        "cy": 540,
+        "r": 400
+      },
+      "roles": {
+        "attendee": "europe-2027-attendee.png",
+        "speaker": "europe-2027-speaker.png",
+        "volunteer": "europe-2027-volunteer.png",
+        "organizer": "europe-2027-organizer.png",
+        "sponsor": "europe-2027-sponsor.png",
+        "mediapartner": "europe-2027-mediapartner.png"
+      }
+    }
+  },
+  "source": "Interim frames drawn by this project with tools/draw-event-frames.mjs on 2026-11-23, from the project's own WordCamp Europe frame design. Not supplied by the event's organizers or designers.",
+  "rights": "Project-authored artwork under the project license (GPL-2.0-or-later); see LICENSING.md. It is an independent adaptation, not official event artwork, and grants no rights in the WordCamp or WordPress marks. Replace these files when the organizers supply frames.",
+  "assets": [
+    {
+      "path": "europe-2027-attendee.png",
+      "sha256": "f72b0d466cc6d4979fb2fece4e2cf100cb309df910fe88800418df7ee78b94ab",
+      "bytes": 62215,
+      "width": 1080,
+      "height": 1080,
+      "sourceName": "europe-2027-attendee.svg",
+      "sourceSha256": "dd7199170260dd5b4e96535e35b9252660a533f9cfe8d522342ed0ea52b0142f",
+      "sourceBytes": 299930,
+      "conversion": "Drawn as SVG by tools/draw-event-frames.mjs, rasterized at 1080 x 1080 on a transparent background with Google Chrome for Testing 153.0.8010.12. Then: lossless recompression with oxipng 9.1.1 (level 6, safe chunk stripping, RGBA kept)."
+    },
+    {
+      "path": "europe-2027-speaker.png",
+      "sha256": "bd6618bf50a13e5a26c8f34bc31db38d86be9e02c6fa57d049b661f062c32867",
+      "bytes": 61847,
+      "width": 1080,
+      "height": 1080,
+      "sourceName": "europe-2027-speaker.svg",
+      "sourceSha256": "6cd1f5532d5b15aa9fed316445ff610abb04e110fa3fae981f773034a2d4411e",
+      "sourceBytes": 299930,
+      "conversion": "Drawn as SVG by tools/draw-event-frames.mjs, rasterized at 1080 x 1080 on a transparent background with Google Chrome for Testing 153.0.8010.12. Then: lossless recompression with oxipng 9.1.1 (level 6, safe chunk stripping, RGBA kept)."
+    },
+    {
+      "path": "europe-2027-volunteer.png",
+      "sha256": "965f404d0b372a28c0e859f95f4276d093f794b71700ac7cade61c3121e8f2d3",
+      "bytes": 64384,
+      "width": 1080,
+      "height": 1080,
+      "sourceName": "europe-2027-volunteer.svg",
+      "sourceSha256": "ceb8984a2723382b0e9b25e06d3a34087867f8f24dbc2d7b2c5158cd208c5a1f",
+      "sourceBytes": 299936,
+      "conversion": "Drawn as SVG by tools/draw-event-frames.mjs, rasterized at 1080 x 1080 on a transparent background with Google Chrome for Testing 153.0.8010.12. Then: lossless recompression with oxipng 9.1.1 (level 6, safe chunk stripping, RGBA kept)."
+    },
+    {
+      "path": "europe-2027-organizer.png",
+      "sha256": "99a755879dfe8438989c6b92c4ccd21db7be24d57b7a7ada2a434fe078968b0a",
+      "bytes": 63031,
+      "width": 1080,
+      "height": 1080,
+      "sourceName": "europe-2027-organizer.svg",
+      "sourceSha256": "d1707e63e0d9141d5626c780404d9e39cc35718767bf33a4566dbbc94a6c3f18",
+      "sourceBytes": 299932,
+      "conversion": "Drawn as SVG by tools/draw-event-frames.mjs, rasterized at 1080 x 1080 on a transparent background with Google Chrome for Testing 153.0.8010.12. Then: lossless recompression with oxipng 9.1.1 (level 6, safe chunk stripping, RGBA kept)."
+    },
+    {
+      "path": "europe-2027-sponsor.png",
+      "sha256": "62993f2315ab9551351361193f8379a531b1289f10ac85e7530fc6891fa4ba8e",
+      "bytes": 63490,
+      "width": 1080,
+      "height": 1080,
+      "sourceName": "europe-2027-sponsor.svg",
+      "sourceSha256": "e966d242ba5bf8c192af54831711e32919ac121c77de87fa249ed40aa893b8ea",
+      "sourceBytes": 299932,
+      "conversion": "Drawn as SVG by tools/draw-event-frames.mjs, rasterized at 1080 x 1080 on a transparent background with Google Chrome for Testing 153.0.8010.12. Then: lossless recompression with oxipng 9.1.1 (level 6, safe chunk stripping, RGBA kept)."
+    },
+    {
+      "path": "europe-2027-mediapartner.png",
+      "sha256": "f79d5288db3cd823d490f6b42b63baa186c9be363ea465e055f7b89d79dfb6c6",
+      "bytes": 65679,
+      "width": 1080,
+      "height": 1080,
+      "sourceName": "europe-2027-mediapartner.svg",
+      "sourceSha256": "ed7df337d31c9969b659ed719e7f1a15ae27b896118cdd0465cb0c93fff09aac",
+      "sourceBytes": 299940,
+      "conversion": "Drawn as SVG by tools/draw-event-frames.mjs, rasterized at 1080 x 1080 on a transparent background with Google Chrome for Testing 153.0.8010.12. Then: lossless recompression with oxipng 9.1.1 (level 6, safe chunk stripping, RGBA kept)."
+    }
+  ]
+}

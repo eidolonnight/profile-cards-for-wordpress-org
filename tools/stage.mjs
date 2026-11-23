@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { resolve, dirname, basename, join, isAbsolute, relative, sep, parse } from 'node:path';
 import { homedir } from 'node:os';
-import { EVENT_MODULES, BROWSER_MODULES, browserModuleSource } from './browser-modules.mjs';
+import { EVENT_MODULES, BROWSER_MODULES, FRAME_FILES, browserModuleSource } from './browser-modules.mjs';
 // Build a new immutable allowlist. Never replace existing release directories or follow symlinks.
 const source = resolve(fileURLToPath(new URL('../', import.meta.url)));
 const home = resolve(process.env.HOME || homedir());
@@ -28,7 +28,9 @@ const entries = [
   // that removal while both copies still come from one canonical source.
   ...['options.js', 'svg.js', 'social.js', 'fonts.js', 'events.js'].map(name => [`shared/${name}`, `shared/${name}`]),
   ...EVENT_MODULES.map(path => [path, path]),
-  ...BROWSER_MODULES
+  ...BROWSER_MODULES,
+  // Avatar-frame artwork, published as plain PNG files for the builder to fetch.
+  ...FRAME_FILES
 ];
 await mkdir(base, { recursive: true, mode: 0o700 });
 if (await realpath(base) !== base || await realpath(source) !== source) throw new Error('Symlinked release/source parents are not allowed.');
@@ -55,7 +57,7 @@ function browserBytes(to, bytes) {
   }
   if (to === 'app.js') {
     // Includes both dynamic imports and the preview HEAD failure-classification probe.
-    return Buffer.from(bytes.toString('utf8').replace(/(['"])(\/(?:background\.js|matt-demo\.js|preview\/preview\.js))\1/g,
+    return Buffer.from(bytes.toString('utf8').replace(/(['"])(\/(?:background\.js|matt-demo\.js|preview\/preview\.js|preview\/events\/frame-loader\.js))\1/g,
       (_, quote, path) => `${quote}${path}?v=${revision}${quote}`));
   }
   if (to === 'matt-demo.js') {

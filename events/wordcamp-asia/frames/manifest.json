@@ -1,0 +1,89 @@
+{
+  "editions": {
+    "asia-2027": {
+      "window": {
+        "cx": 747,
+        "cy": 766,
+        "r": 500
+      },
+      "roles": {
+        "attendee": "asia-2027-attendee.png",
+        "speaker": "asia-2027-speaker.png",
+        "volunteer": "asia-2027-volunteer.png",
+        "organizer": "asia-2027-organizer.png",
+        "sponsor": "asia-2027-sponsor.png",
+        "mediapartner": "asia-2027-mediapartner.png"
+      }
+    }
+  },
+  "source": "Per-role avatar-frame PNGs provided by the WordCamp Asia 2027 designers; received from the project maintainer on 2026-11-22.",
+  "rights": "Event artwork supplied for use in this project. It is not relicensed under the project's GPL: rights in the artwork and in the WordCamp and WordPress marks it contains remain with their owners. The supplier's license or permission terms are not recorded here yet; confirm them before publishing.",
+  "assets": [
+    {
+      "path": "asia-2027-attendee.png",
+      "sha256": "462fe1804e095dca89748f0e916b0a8588c16b7dd5abceafb912abb374df05c2",
+      "bytes": 180170,
+      "width": 1500,
+      "height": 1500,
+      "sourceName": "Attendee.png",
+      "sourceSha256": "58149c52e5ffc696041e890c039ee4d1541215a23a43477b50f0645c1f3baadd",
+      "sourceBytes": 303336,
+      "conversion": "The supplied file left 2017 pixels in columns x=0-1 not fully opaque; those pixels were replaced with the adjacent opaque column x=2. Then: lossless recompression with oxipng 9.1.1 (level 6, safe chunk stripping, RGBA kept)."
+    },
+    {
+      "path": "asia-2027-speaker.png",
+      "sha256": "ea1c2c1372d8be70073b6a8f09bbe01b5e17501a58b8505c7b8748d01474703d",
+      "bytes": 370585,
+      "width": 1500,
+      "height": 1500,
+      "sourceName": "Speaker.png",
+      "sourceSha256": "408b2d14565578259bf024da65389c731f3dfc9ba42af480a6f1490f27fc33be",
+      "sourceBytes": 602610,
+      "conversion": "Lossless recompression with oxipng 9.1.1 (level 6, safe chunk stripping, RGBA kept); decoded pixels are identical to the supplied file."
+    },
+    {
+      "path": "asia-2027-volunteer.png",
+      "sha256": "581721d2535afc7dea0f3621e0d5fccf5bfe33ec8e80ee09a5ebae936d033785",
+      "bytes": 263552,
+      "width": 1500,
+      "height": 1500,
+      "sourceName": "Volunteer.png",
+      "sourceSha256": "eb25b512d1824c77ff56af3fcd7fe45c3b9cac33ae33dcbe9a91e4fdc8c7e58d",
+      "sourceBytes": 409679,
+      "conversion": "Lossless recompression with oxipng 9.1.1 (level 6, safe chunk stripping, RGBA kept); decoded pixels are identical to the supplied file."
+    },
+    {
+      "path": "asia-2027-organizer.png",
+      "sha256": "ddafa712e62a6e8c8b6983e9736f07224088dcca869ab68b413f06ed9be93608",
+      "bytes": 270438,
+      "width": 1500,
+      "height": 1500,
+      "sourceName": "Organiser.png",
+      "sourceSha256": "46b9683054bde41e43607bab9635e3c8e43884bba8a2ef05d7b3f1751741c1c6",
+      "sourceBytes": 411474,
+      "conversion": "Lossless recompression with oxipng 9.1.1 (level 6, safe chunk stripping, RGBA kept); decoded pixels are identical to the supplied file."
+    },
+    {
+      "path": "asia-2027-sponsor.png",
+      "sha256": "f0e83bfcee24f9484a28bad758ccb6606ece93b79ade6eca58478602cc33eb67",
+      "bytes": 489453,
+      "width": 1500,
+      "height": 1500,
+      "sourceName": "Sponsor.png",
+      "sourceSha256": "a8fd417c2f24d1750d2b84931d50cf923f0fd48ec42dec62cce573618f721da7",
+      "sourceBytes": 787840,
+      "conversion": "The supplied file left 2885 pixels in columns x=0-1 not fully opaque; those pixels were replaced with the adjacent opaque column x=2. Then: lossless recompression with oxipng 9.1.1 (level 6, safe chunk stripping, RGBA kept)."
+    },
+    {
+      "path": "asia-2027-mediapartner.png",
+      "sha256": "f37ac2ee0b4f6ea7dd550db1caaaf98a7eed3673cb1b47066b59434af1afac0f",
+      "bytes": 368662,
+      "width": 1500,
+      "height": 1500,
+      "sourceName": "Media_Partner.png",
+      "sourceSha256": "a5b4b5820ca6051bc28b875c9793baa24e1b827f401f689940f17e02bcd68bf8",
+      "sourceBytes": 573725,
+      "conversion": "Lossless recompression with oxipng 9.1.1 (level 6, safe chunk stripping, RGBA kept); decoded pixels are identical to the supplied file."
+    }
+  ]
+}

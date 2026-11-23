@@ -29,7 +29,7 @@ function editor(search = '?layout=profile', fetcher = async () => ({ ok: true, j
     Option: function (text, value) { const option = env.document.createElement('option'); option.value = value; option.textContent = text; return option; },
   });
   // Exercise the complete production script; expose private functions only in this VM.
-  vm.runInContext(app.replace(/\}\)\(\);\s*$/, 'globalThis.editorTest = { state, parameters, syncControls, hasVisibleContent, loadEvents, updateEventNote, validCatalog, renderCard, status, clearCard };\n})();'), context);
+  vm.runInContext(app.replace(/\}\)\(\);\s*$/, 'globalThis.editorTest = { state, parameters, syncControls, hasVisibleContent, loadEvents, updateEventNote, validCatalog, renderCard, scheduleRender, status, clearCard };\n})();'), context);
   return { ...env, ...context.editorTest, change(id, value) { const node = env.$(id); if (node.type === 'checkbox') node.checked = value; else node.value = value; node.dispatchEvent(new env.window.Event('change')); } };
 }
 function appearance({ saved = null, blockedRead = false, blockedWrite = false, loading = false, dark = false } = {}) {
@@ -120,7 +120,8 @@ test('classic and WordCamp retain their own controls without modern-only options
       assert.ok(e.$(id).closest('[hidden]'));
       assert.equal(e.parameters('fixture').has(id), false);
     }
-    assert.equal(e.$('avatar').disabled || false, layout === 'announcement');
+    assert.equal(e.$('avatar').disabled || false, layout !== 'classic');
+    assert.equal(e.$('display-settings').hidden || false, layout === 'avatar');
     assert.equal(e.$('badges').disabled, layout !== 'classic');
     assert.equal(e.$('name').disabled, true);
     assert.equal(e.$('handle').disabled, layout !== 'announcement');
@@ -128,6 +129,25 @@ test('classic and WordCamp retain their own controls without modern-only options
     for (const id of layout === 'classic' ? ['avatar', 'badges', 'link'] : layout === 'avatar' ? ['avatar'] : ['avatar', 'name', 'handle', 'eventDetails']) {
       assert.equal(e.$(id).checked, true, `${layout}/${id} fresh`);
     }
+  }
+});
+
+test('WordCamp avatar frames always include the profile photo and offer no content choices', async () => {
+  for (const search of ['?layout=avatar', '?layout=avatar&avatar=false']) {
+    const e = editor(search);
+    await e.loadEvents();
+    assert.equal(e.state.restoreInvalid, search.includes('avatar=false'), search);
+    assert.equal(e.$('avatar').checked, true, search);
+    assert.equal(e.$('avatar').disabled, true, search);
+    assert.equal(e.$('display-settings').hidden, true, search);
+    assert.equal(e.parameters('fixture').get('avatar'), 'true', search);
+    e.change('layout', 'profile');
+    assert.equal(e.$('display-settings').hidden, false);
+    assert.equal(e.$('avatar').disabled, false);
+    e.change('avatar', false);
+    e.change('layout', 'avatar');
+    assert.equal(e.$('avatar').checked, true, 'another format cannot switch the photo off');
+    assert.equal(e.parameters('fixture').get('avatar'), 'true');
   }
 });
 
@@ -291,17 +311,18 @@ test('appearance tolerates denied storage, invalid saved values and cross-tab ch
 
 test('explicit URL false survives returning to a layout while new layouts default checked', async () => {
   for (const initial of ['profile', 'square', 'classic', 'avatar', 'announcement']) {
-    const applicable = initial === 'avatar' ? ['avatar'] : initial === 'announcement' ? ['handle', 'eventDetails'] : initial === 'classic' ? ['avatar', 'badges', 'link'] : modernIds;
+    const applicable = initial === 'avatar' ? [] : initial === 'announcement' ? ['handle', 'eventDetails'] : initial === 'classic' ? ['avatar', 'badges', 'link'] : modernIds;
+    const required = initial === 'avatar' ? ['avatar'] : initial === 'announcement' ? ['avatar', 'name'] : [];
     const e = editor(`?layout=${initial}&${applicable.map(id => `${id}=false`).join('&')}`);
     if (['avatar', 'announcement'].includes(initial)) await e.loadEvents();
     for (const id of applicable) assert.equal(e.$(id).checked, false);
-    if (initial === 'announcement') for (const id of ['avatar', 'name']) assert.equal(e.$(id).checked, true, `${initial}/${id} required`);
+    for (const id of required) assert.equal(e.$(id).checked, true, `${initial}/${id} required`);
     const next = initial === 'profile' ? 'square' : 'profile';
     e.change('layout', next);
     for (const id of modernIds) assert.equal(e.$(id).checked, true, `${initial} to ${next}/${id}`);
     e.change('layout', initial);
     for (const id of applicable) assert.equal(e.$(id).checked, false, `${initial}/${id}`);
-    if (initial === 'announcement') for (const id of ['avatar', 'name']) assert.equal(e.$(id).checked, true, `${initial}/${id} required on return`);
+    for (const id of required) assert.equal(e.$(id).checked, true, `${initial}/${id} required on return`);
     const fresh = editor('?layout=profile');
     fresh.change('layout', initial);
     if (['avatar', 'announcement'].includes(initial)) await fresh.loadEvents();
@@ -319,6 +340,8 @@ test('render completion puts actual local fetch time inline before links and pre
       e.state.profile = profile;
       e.state.username = 'fixture';
       e.state.rendererPromise = Promise.resolve(() => '<svg xmlns="http://www.w3.org/2000/svg"/>');
+      // Avatar frames are PNG artwork, loaded through the frame loader.
+      e.state.frameLoader = Promise.resolve({ loadEventFrame: async () => 'data:image/png;base64,AAAA' });
       e.state.previewInputs = { profile, fingerprint: JSON.stringify(profile), expires: performance.now() + 10000, avatars: new Map([320, 1024].map(size => [size, { data: null, status: avatarStatus }])) };
       await e.renderCard(e.state.renderVersion);
       assert.equal(e.state.ready, true, e.$('status').textContent);
@@ -357,4 +380,173 @@ test('OS appearance has a no-JavaScript CSS fallback and explicit overrides', ()
   assert.equal(document.querySelector('link[rel="canonical"]').href, 'https://profiles.wapuu.news/');
   assert.equal(document.querySelector('meta[property="og:url"]').getAttribute('content'), 'https://profiles.wapuu.news/');
   assert.equal(document.getElementById('site-theme-control').hidden, true, 'no inert control without JS');
+});
+
+// A catalog whose first edition has artwork for only two roles, and whose other
+// editions have none, exercises the limits.
+const partialCatalog = () => ({ events: [{ ...EVENTS[0], frameRoles: ['attendee', 'speaker'] }, ...EVENTS.slice(1).map(({ frameRoles, ...event }) => event)], roles: ROLES });
+const partialFetcher = async () => ({ ok: true, json: async () => partialCatalog() });
+const frameEditor = async (search = '?layout=avatar') => {
+  const e = editor(search, partialFetcher);
+  await e.loadEvents();
+  return e;
+};
+const pick = (e, event, role) => { e.$('event').value = event; e.$('role').value = role; e.syncControls(); };
+
+test('avatar frames offer a shape and only roles with artwork, with no color or background controls', async () => {
+  const e = await frameEditor();
+  const roles = () => Object.fromEntries([...e.$('role').options].map(option => [option.value, !option.disabled && !option.hidden]));
+  pick(e, EVENTS[0].id, 'sponsor');
+  assert.equal(e.$('role').value, 'attendee', 'a role without artwork moves to the first role with artwork');
+  assert.deepEqual(roles(), Object.fromEntries(ROLES.map(role => [role.id, ['attendee', 'speaker'].includes(role.id)])));
+  assert.equal(e.$('customize-colors').hidden, true);
+  assert.equal(e.$('frame-note').hidden, false);
+  assert.match(e.$('frame-note').textContent, /finished artwork/);
+  assert.equal(e.$('shape-setting').hidden, false);
+  assert.equal(e.$('shape').disabled, false);
+  assert.equal(e.$('shape').value, 'circle', 'circle is the default shape');
+  const params = e.parameters('fixture');
+  assert.deepEqual([...params.keys()].sort(), ['avatar', 'event', 'layout', 'role', 'shape', 'username']);
+  assert.equal(params.get('role'), 'attendee');
+  assert.equal(params.get('shape'), 'circle');
+  e.change('shape', 'square');
+  assert.equal(e.parameters('fixture').get('shape'), 'square');
+  // The same edition's social card keeps every role and its controls, and has no shape.
+  e.change('layout', 'announcement'); pick(e, EVENTS[0].id, 'sponsor');
+  assert.equal(e.$('role').value, 'sponsor');
+  assert.ok(Object.values(roles()).every(Boolean));
+  assert.equal(e.$('customize-colors').hidden, false);
+  assert.equal(e.$('frame-note').hidden, true);
+  assert.equal(e.$('shape-setting').hidden, true);
+  assert.equal(e.$('shape').disabled, true);
+  assert.ok(e.parameters('fixture').has('foreground'));
+  assert.equal(e.parameters('fixture').has('shape'), false);
+  // The shape choice survives a visit to another format.
+  e.change('layout', 'avatar'); pick(e, EVENTS[0].id, 'speaker');
+  assert.equal(e.$('customize-colors').hidden, true);
+  assert.equal(e.parameters('fixture').get('shape'), 'square');
+  // Leaving WordCamp formats never leaves the color controls hidden.
+  e.change('layout', 'profile');
+  assert.equal(e.$('customize-colors').hidden, false);
+  assert.equal(e.$('frame-note').hidden, true);
+  assert.equal(e.$('shape-setting').hidden, true);
+});
+
+test('avatar frames download as PNG only and never fall back to the card route', async () => {
+  const requests = [];
+  const e = editor('?layout=avatar', async url => { requests.push(String(url)); return { ok: true, json: async () => ({ events: EVENTS, roles: ROLES }) }; });
+  await e.loadEvents();
+  assert.equal(e.$('download-svg').hidden, true);
+  assert.equal(e.$('download-png').hidden || false, false);
+  for (const layout of ['announcement', 'profile', 'square', 'classic']) { e.change('layout', layout); assert.equal(e.$('download-svg').hidden, false, layout); }
+  e.change('layout', 'avatar');
+  assert.equal(e.$('download-svg').hidden, true);
+  // The server has no frame artwork: without the browser renderer the failure is explicit.
+  const profile = { userName: 'fixture', name: 'Fixture', badges: [], teams: [], fetchedAt: '2024-08-07T06:05:04.000Z' };
+  e.state.profile = profile; e.state.username = 'fixture';
+  e.state.previewInputs = { profile, fingerprint: JSON.stringify(profile), avatars: new Map([320, 1024].map(size => [size, { data: null, status: 'initials' }])) };
+  e.state.rendererPromise = Promise.resolve(null);
+  requests.length = 0;
+  await e.renderCard(e.state.renderVersion);
+  assert.equal(e.state.ready, false);
+  assert.match(e.$('status').textContent, /^Avatar frames are made in your browser/);
+  assert.equal(e.$('exports').disabled, true);
+  assert.deepEqual(requests, [], 'no request to /card or anything else');
+});
+
+test('an event without an edition is not offered, and a shared link naming it is rejected', async () => {
+  assert.deepEqual(EVENTS.map(event => event.id), ['asia-2027', 'europe-2027', 'india-2027']);
+  for (const layout of ['announcement', 'avatar']) {
+    const e = editor(`?layout=${layout}&event=us-2027&role=attendee`);
+    await e.loadEvents();
+    assert.deepEqual([...e.$('event').options].map(option => option.textContent), ['WordCamp Asia', 'WordCamp Europe', 'WordCamp India'], layout);
+    assert.equal(e.state.restoreInvalid, true, layout);
+    assert.equal(e.$('status').dataset.kind, 'error', layout);
+  }
+});
+
+test('shared links restore a valid shape and reject it anywhere else', async () => {
+  const square = await frameEditor(`?layout=avatar&event=${EVENTS[0].id}&role=speaker&shape=square`);
+  assert.equal(square.state.restoreInvalid, false);
+  assert.equal(square.parameters('fixture').get('shape'), 'square');
+  for (const search of ['?layout=avatar&shape=oval', '?layout=avatar&shape=square&shape=circle', '?layout=announcement&shape=square', '?layout=profile&shape=circle']) {
+    const e = editor(search);
+    assert.equal(e.$('status').dataset.kind, 'error', search);
+    assert.equal(e.$('shape').value, 'circle', search);
+  }
+});
+
+test('frame artwork loads once per role, skips local backgrounds and fails explicitly', async () => {
+  const e = await frameEditor();
+  pick(e, EVENTS[0].id, 'speaker');
+  const profile = { userName: 'fixture', name: 'Fixture', badges: [], teams: [], fetchedAt: '2024-08-07T06:05:04.000Z' };
+  e.state.profile = profile; e.state.username = 'fixture';
+  e.state.previewInputs = { profile, fingerprint: JSON.stringify(profile), avatars: new Map([320, 1024].map(size => [size, { data: null, status: 'initials' }])) };
+  const received = []; const loads = [];
+  e.state.rendererPromise = Promise.resolve((...args) => { received.push(args); return '<svg xmlns="http://www.w3.org/2000/svg"/>'; });
+  e.state.frameLoader = Promise.resolve({ loadEventFrame: async (event, role) => { loads.push([event, role]); return `data:image/png;base64,${role}`; } });
+  // A local background selected for another format must neither block nor alter this frame.
+  e.state.background = { dispose() {} };
+  e.state.backgroundError = 'Could not use this background.';
+  e.state.backgroundModule = { applyBackground() { throw new Error('must not composite behind frame artwork'); } };
+  e.scheduleRender();
+  assert.notEqual(e.$('empty-title').textContent, 'Check your background image.');
+  for (let pass = 0; pass < 2; pass++) { await e.renderCard(e.state.renderVersion); assert.equal(e.state.ready, true, e.$('status').textContent); }
+  assert.deepEqual(loads, [[EVENTS[0].id, 'speaker']]);
+  assert.deepEqual(received.map(args => args[3]), ['data:image/png;base64,speaker', 'data:image/png;base64,speaker']);
+  assert.equal(new URLSearchParams(received[0][1]).has('foreground'), false);
+  assert.equal(new URLSearchParams(received[0][1]).get('shape'), 'circle');
+  assert.match(e.$('card-preview').alt, /I'm speaking\. Round avatar frame\./);
+  pick(e, EVENTS[0].id, 'attendee'); e.change('shape', 'square');
+  await e.renderCard(e.state.renderVersion);
+  assert.deepEqual(loads, [[EVENTS[0].id, 'speaker'], [EVENTS[0].id, 'attendee']]);
+  assert.equal(received.at(-1)[3], 'data:image/png;base64,attendee');
+  assert.equal(new URLSearchParams(received.at(-1)[1]).get('shape'), 'square', 'one artwork payload serves both shapes');
+  assert.match(e.$('card-preview').alt, /Square avatar frame\./);
+  // An edition without artwork asks for none: the renderer reports it, nothing is substituted.
+  pick(e, EVENTS[1].id, 'attendee');
+  await e.renderCard(e.state.renderVersion);
+  assert.equal(loads.length, 2);
+  assert.equal(received.at(-1)[3], null);
+  // The local background returns for the formats that take one.
+  e.change('layout', 'announcement');
+  e.state.backgroundError = '';
+  await e.renderCard(e.state.renderVersion);
+  assert.equal(e.state.ready, false);
+  assert.equal(e.$('status').textContent, 'must not composite behind frame artwork');
+  // Missing or failed artwork never renders a substitute design.
+  for (const loader of [Promise.reject(new Error('offline')), Promise.resolve({ loadEventFrame: async () => null }), Promise.resolve({})]) {
+    const failing = await frameEditor();
+    pick(failing, EVENTS[0].id, 'attendee');
+    failing.state.profile = profile; failing.state.username = 'fixture';
+    failing.state.previewInputs = e.state.previewInputs;
+    let rendered = 0;
+    failing.state.rendererPromise = Promise.resolve(() => { rendered++; return '<svg xmlns="http://www.w3.org/2000/svg"/>'; });
+    loader.catch(() => {});
+    failing.state.frameLoader = loader;
+    await failing.renderCard(failing.state.renderVersion);
+    assert.equal(failing.state.ready, false);
+    assert.equal(rendered, 0);
+    assert.equal(failing.$('exports').disabled, true);
+    assert.equal(failing.$('status').textContent, 'The artwork for this frame could not be loaded. Reload the page to try again.');
+  }
+});
+
+test('restored links and catalogs fail closed on roles without frame artwork', async () => {
+  const valid = await frameEditor(`?layout=avatar&event=${EVENTS[0].id}&role=speaker`);
+  assert.equal(valid.state.restoreInvalid, false);
+  assert.equal(valid.$('role').value, 'speaker');
+  const invalid = await frameEditor(`?layout=avatar&event=${EVENTS[0].id}&role=sponsor`);
+  assert.equal(invalid.state.restoreInvalid, true, 'never silently switch a shared link to another role');
+  assert.equal(invalid.$('empty-title').textContent, 'Check your event settings.');
+  assert.equal(invalid.$('status').dataset.kind, 'error');
+  const card = await frameEditor(`?layout=announcement&event=${EVENTS[0].id}&role=sponsor`);
+  assert.equal(card.state.restoreInvalid, false);
+  assert.equal(card.$('role').value, 'sponsor');
+  const e = editor();
+  assert.equal(e.validCatalog(partialCatalog()), true);
+  assert.equal(e.validCatalog({ events: EVENTS, roles: ROLES }), true);
+  for (const frameRoles of [null, 'attendee', {}, [], ['attendee', 'attendee'], ['unknown'], [1], [...ROLES.map(role => role.id), 'extra']]) {
+    assert.equal(e.validCatalog({ events: [{ ...EVENTS[0], frameRoles }, ...EVENTS.slice(1)], roles: ROLES }), false, JSON.stringify(frameRoles));
+  }
 });
