@@ -3,8 +3,9 @@ import { renderCard } from './svg.js';
 import { renderSocial } from './social.js';
 
 // Pure browser entry: only server-provided profile/photo data, never network I/O.
-// `frameData` is the generated payload for an organizer-supplied avatar frame.
-export function renderPreview(profile, queryString, avatarData = null, frameData = null) {
+// `frameData` is an avatar frame's published PNG as a data URL; `bandData` is its band,
+// for a social card made from the frame.
+export function renderPreview(profile, queryString, avatarData = null, frameData = null, bandData = null) {
   if (typeof queryString !== 'string') throw new ProfileError('invalid_parameter', 'Preview options must be a query string.');
   const url = new URL('https://preview.invalid/card');
   url.search = queryString;
@@ -12,5 +13,5 @@ export function renderPreview(profile, queryString, avatarData = null, frameData
   if (!profile || profile.userName !== options.username) throw new ProfileError('profile_mismatch', 'The preview profile does not match the requested username.');
   const social = options.layout === 'avatar' || options.layout === 'announcement';
   const avatar = options.avatar && (social || options.header) ? avatarData : null;
-  return social ? renderSocial(profile, options, avatar, frameData) : renderCard(profile, options, avatar);
+  return social ? renderSocial(profile, options, avatar, frameData, bandData) : renderCard(profile, options, avatar);
 }

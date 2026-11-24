@@ -30,22 +30,25 @@
         <div class="section-heading"><span class="step" aria-hidden="true">00</span><h2 id="build-title">Make your card</h2></div>
         <form id="profile-form">
           <label for="username">WordPress.org username</label>
-          <p class="field-help" id="username-help">Use your profile’s lowercase username, not your display name or its full URL.</p>
+          <p class="field-help" id="username-help">Use your profile’s lowercase username, not your display name or its full URL. If you don’t have an account, you can sign up at <a href="https://login.wordpress.org/register" target="_blank" rel="noopener noreferrer">login.wordpress.org/register <span aria-hidden="true">↗</span></a>.</p>
           <div class="profile-entry"><input id="username" name="username" type="text" required maxlength="60" pattern="[a-z0-9][a-z0-9._\-]*" placeholder="Your WordPress.org Username" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="username-help"><button class="button primary" type="submit" id="create-button">Create card <span aria-hidden="true">↗</span></button></div>
           <p class="field-help">Profile data is normally cached for up to 1 hour. Recently cached details may be used while WordPress.org limits requests.</p>
         </form>
-        <div class="layout-setting"><label for="layout">What would you like to make?</label><select id="layout" aria-describedby="layout-help"><option value="announcement" selected>WordCamp social card</option><option value="avatar">WordCamp avatar frame</option><option value="square">Vertical card</option><option value="profile">Landscape banner</option><option value="classic" hidden>Legacy card</option></select><p id="layout-help" class="field-help">Choose a 4:5 WordCamp social card, round or square avatar frame, vertical profile card, or landscape banner.</p></div>
-        <section id="event-settings" class="event-settings" aria-labelledby="event-heading" hidden>
-          <fieldset id="event-controls" disabled>
-            <legend id="event-heading">Your WordCamp</legend>
+        <div class="layout-setting"><label for="layout">What would you like to make?</label><select id="layout"><option value="announcement" selected>WordCamp social card</option><option value="avatar">WordCamp avatar frame</option><option value="square">Vertical profile card</option><option value="profile">Landscape profile banner</option><option value="classic" hidden>Legacy card</option></select></div>
+        <section id="event-settings" class="event-settings" hidden>
+          <fieldset id="event-controls" aria-label="WordCamp" disabled>
             <div class="event-selects">
               <div><label for="event">Flagship event</label><select id="event" aria-describedby="event-note"></select></div>
               <div><label for="role">I’m…</label><select id="role" aria-describedby="role-help"></select></div>
-              <div id="shape-setting" hidden><label for="shape">Shape</label><select id="shape" disabled><option value="circle" selected>Circle</option><option value="square">Square</option></select></div>
+              <fieldset id="shape-setting" class="shape-picker" hidden disabled>
+                <legend>Shape</legend>
+                <div class="shape-options">
+                  <label class="shape-option" for="shape-circle"><input type="radio" name="shape" id="shape-circle" value="circle" checked><span class="shape-swatch shape-swatch-circle" aria-hidden="true"></span><span class="sr-only">Circle</span></label>
+                  <label class="shape-option" for="shape-square"><input type="radio" name="shape" id="shape-square" value="square"><span class="shape-swatch shape-swatch-square" aria-hidden="true"></span><span class="sr-only">Square</span></label>
+                </div>
+              </fieldset>
             </div>
-            <label class="check-label" for="eventDetails"><input type="checkbox" id="eventDetails" checked> Event dates &amp; location</label>
           </fieldset>
-          <p id="frame-note" class="field-help" hidden>Avatar frames are finished artwork. Your profile photo is always included, and colors and backgrounds can’t be changed.</p>
           <p id="event-note" class="field-help" aria-live="polite">Loading the event list…</p>
           <a id="event-source" class="event-source" target="_blank" rel="noopener noreferrer" hidden>Check the official event site <span aria-hidden="true">↗</span></a>
           <button id="retry-events" class="button" type="button" hidden>Retry event list</button>
@@ -55,9 +58,9 @@
             <legend>Profile content</legend>
             <p id="public-fields-help" class="field-help">Only available public details appear. Missing fields are left out automatically.</p>
             <div class="profile-content-options">
-              <label class="check-label" for="avatar"><input type="checkbox" id="avatar" checked> <span id="avatar-label">Avatar</span></label>
+              <label class="check-label" for="avatar"><input type="checkbox" id="avatar" checked> Avatar</label>
               <div id="profile-fields" class="profile-detail-controls">
-                <label class="check-label" for="name"><input type="checkbox" id="name" checked> <span id="name-label">Name</span></label>
+                <label class="check-label" for="name"><input type="checkbox" id="name" checked> Name</label>
                 <label class="check-label" for="handle"><input type="checkbox" id="handle" checked> Username</label>
                 <label class="check-label" for="jobTitle"><input type="checkbox" id="jobTitle" checked> Job title</label>
                 <label class="check-label" for="organization"><input type="checkbox" id="organization" checked> Organization</label>
@@ -69,7 +72,7 @@
               <label class="check-label" for="badgeNames"><input type="checkbox" id="badgeNames" checked> Badge names</label>
               <label class="check-label" for="link" id="profile-link-setting"><input type="checkbox" id="link" checked> Profile link</label>
               <label id="social-setting" class="check-label" for="social"><input type="checkbox" id="social" aria-describedby="social-help" checked> Social links</label>
-              <p id="social-help" class="field-help">Includes available public links. SVG links are clickable; PNG icons are not clickable.</p>
+              <p id="social-help" class="field-help">Includes available public links. PNG icons are not clickable.</p>
               <details id="individual-details" class="advanced" hidden>
                 <summary>Choose individual teams</summary>
                 <p class="field-help">Uncheck any item to leave it off this card.</p>
@@ -121,7 +124,7 @@
         <div id="profile-meta" class="profile-meta" hidden><div class="profile-meta-links"><a id="open-preview" target="_blank" rel="noopener noreferrer">View full-size card <span aria-hidden="true">↗</span></a><a id="profile-link" href="https://profiles.wordpress.org/" target="_blank" rel="noopener noreferrer">View source profile <span aria-hidden="true">↗</span></a></div></div>
         <fieldset id="exports" class="exports" disabled>
           <legend class="sr-only">Download your card</legend>
-          <div class="download-actions"><button id="download-png" class="button primary" type="button">Download PNG</button><button id="download-svg" class="button" type="button">Download SVG</button></div>
+          <div class="download-actions"><button id="download-png" class="button primary" type="button">Download PNG</button></div>
         </fieldset>
       </section>
     </div>

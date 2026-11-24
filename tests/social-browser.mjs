@@ -72,7 +72,6 @@ const noOverflow = async (target = page) => assert.ok(await target.evaluate(() =
 try {
   const eventsResponse = await context.request.get(base + '/events'); assert.equal(eventsResponse.status(), 200);
   const catalog = await eventsResponse.json(); assert.equal(catalog.events.length, 3); assert.equal(catalog.roles.length, 6);
-  // WordCamp US has no edition yet, so it is not offered.
   assert.deepEqual(catalog.events.map(event => event.id), ['asia-2027', 'europe-2027', 'india-2027']);
   // Every edition's avatar frame is PNG artwork, listed per role.
   for (const event of catalog.events) assert.deepEqual(event.frameRoles, catalog.roles.map(role => role.id), event.id);
@@ -89,30 +88,52 @@ try {
       assert.equal(await page.locator('#' + hidden).isVisible(), false, hidden);
       assert.equal(await page.locator('#' + hidden).isDisabled(), true, hidden);
     }
-    assert.equal(await page.locator('#name').isVisible(), layout === 'announcement');
-    assert.equal(await page.locator('#eventDetails').isVisible(), layout === 'announcement');
-    // The social card has palettes; the avatar frame has a shape and always the photo.
-    const artwork = layout === 'avatar';
-    assert.equal(await page.locator('#shape').isVisible(), artwork);
-    assert.equal(await page.locator('#display-settings').isVisible(), !artwork);
-    assert.equal(await page.locator('#avatar').isVisible(), !artwork);
+    // Choices that cannot be changed are not shown: the photo, the social card's name,
+    // and its event dates and location, which are no longer a control at all.
+    assert.equal(await page.locator('#name').isVisible(), false);
+    assert.equal(await page.locator('#handle').isVisible(), layout === 'announcement');
+    assert.equal(await page.locator('#eventDetails').count(), 0);
+    // A drawn social card has palettes; the avatar frame has a shape and always the photo.
+    const frameLayout = layout === 'avatar';
+    assert.equal(await page.locator('#shape-setting').isVisible(), frameLayout);
+    assert.equal(await page.locator('#display-settings').isVisible(), !frameLayout);
+    assert.equal(await page.locator('#avatar').isVisible(), false);
     assert.equal(await page.locator('#avatar').isChecked(), true); assert.equal(await page.locator('#avatar').isDisabled(), true);
-    if (artwork) assert.equal(await page.locator('#shape').inputValue(), 'circle', 'circle is the default shape');
-    for (const theme of artwork ? ['circle', 'square'] : ['light', 'dark']) {
-      if (artwork) await page.locator('#shape').selectOption(theme); else await selectPalette(page, theme);
+    if (frameLayout) assert.equal(await page.locator('#shape-circle').isChecked(), true, 'circle is the default shape');
+    for (const theme of frameLayout ? ['circle', 'square'] : ['light', 'dark']) {
+      // Palettes are chosen on an edition whose card is drawn, and kept across editions.
+      if (frameLayout) await page.locator('#shape-' + theme).check(); else { await page.locator('#event').selectOption('europe-2027'); await ready(); await selectPalette(page, theme); }
       await ready();
       for (const event of catalog.events) {
         await page.locator('#event').selectOption(event.id); await ready();
+        // WordCamp Asia's social card is made from its frame artwork: finished artwork
+        // like the avatar frame, with no color controls.
+        const derived = !frameLayout && event.frameCard === true; const artwork = frameLayout || derived;
+        assert.equal(event.frameCard === true, event.id === 'asia-2027');
         assert.equal(await page.locator('#event-source').getAttribute('href'), event.url);
         assert.equal(await page.locator('#customize-colors').isVisible(), !artwork, `${layout}/${event.id} color controls`);
-        assert.equal(await page.locator('#frame-note').isVisible(), artwork, `${layout}/${event.id} artwork note`);
+        assert.equal(await page.locator('#frame-note').count(), 0);
         for (const role of catalog.roles) {
           await page.locator('#role').selectOption(role.id); const svg = await preview(); const d = doc(svg); const root = d.querySelector('svg');
           assert.equal(root.getAttribute('data-layout'), layout); assert.equal(root.getAttribute('width'), '1080'); assert.equal(root.getAttribute('height'), layout === 'avatar' ? '1080' : '1350');
           assert.equal(d.querySelectorAll('script,foreignObject,a').length, 0);
           const texts = [...d.querySelectorAll('text')].map(node => node.textContent.trim()).join(' ');
           assert.equal(d.querySelectorAll('image[data-field="frame"]').length, artwork ? 1 : 0, `${layout}/${event.id}/${role.id} artwork`);
-          if (artwork) {
+          if (derived) {
+            // The frame sits under its band, which carries the name and username; the artwork states the rest.
+            assert.equal(d.querySelector('[data-field="event"], [data-field="role"], [data-field="eventDetails"]'), null);
+            assert.deepEqual([...d.querySelectorAll('text')].map(node => node.parentNode.getAttribute('data-field')), ['name', 'handle']);
+            assert.equal(d.querySelector('image[data-field="frame"]').parentNode.getAttribute('transform'), 'translate(0 270)');
+            const title = d.querySelector('svg > title').textContent; assert.ok(title.startsWith(event.label) && title.endsWith(role.statement), 'the accessible title names event and role');
+            assert.match(await page.locator('#card-preview').getAttribute('alt'), /Participation announcement\.$/);
+            const published = await context.request.get(`${base}/frames/${event.id}-${role.id}.png`);
+            assert.equal(d.querySelector('image[data-field="frame"]').getAttribute('href'), 'data:image/png;base64,' + (await published.body()).toString('base64'));
+            // The band is the published PNG too, drawn from the top edge, with no fade over the artwork.
+            const band = await context.request.get(`${base}/frames/${event.id}-${role.id}-band.png`); assert.equal(band.status(), 200); assert.equal(band.headers()['content-type'], 'image/png');
+            assert.equal(d.querySelector('image[data-field="band"]').getAttribute('href'), 'data:image/png;base64,' + (await band.body()).toString('base64'));
+            assert.equal(d.querySelector('linearGradient, [data-decoration]'), null);
+            assert.deepEqual([...d.querySelectorAll('text')].map(node => node.getAttribute('data-face')), ['kumbh-sans-400', 'kumbh-sans-400']);
+          } else if (artwork) {
             // The artwork carries the lettering; the accessible title still names event and role.
             assert.equal(d.querySelector('[data-field="event"], [data-field="role"], text'), null);
             assert.equal(d.querySelector('svg > title').textContent, `${event.label} — ${role.statement}`);
@@ -130,8 +151,8 @@ try {
           await assertDownloadOnlyActions(page);
           if (layout === 'announcement') {
             assert.ok(texts.includes(profile.name)); assert.ok(texts.includes('@' + profile.userName));
-            if (event.dateLabel) assert.ok(texts.includes(event.dateLabel));
-            if (event.location) assert.ok(texts.includes(event.location));
+            if (event.dateLabel && !derived) assert.ok(texts.includes(event.dateLabel));
+            if (event.location && !derived) assert.ok(texts.includes(event.location));
             assert.ok(!/January 1|Phoenix|Host city TBA/.test(texts));
           }
           const image = d.querySelector('[data-field="avatar"] image'); assert.ok(image, 'live social photo must be embedded');
@@ -140,12 +161,13 @@ try {
         }
       }
       await page.locator('#event').selectOption('asia-2027'); await page.locator('#role').selectOption('attendee'); await ready();
-      // An avatar frame downloads as a PNG only.
-      assert.equal(await page.locator('#download-svg').isVisible(), !artwork);
-      if (!artwork) await download('#download-svg', `${layout}-${theme}.svg`);
-      await pngExport(`${layout}-${theme}`, layout, artwork ? { shape: theme } : {});
+      // Every format downloads as a PNG only.
+      assert.equal(await page.locator('#download-svg').count(), 0);
+      await pngExport(`${layout}-${theme}`, layout, frameLayout ? { shape: theme } : {});
       await page.screenshot({ path: `${evidence}/${layout}-${theme}-desktop.png`, fullPage: true });
-      if (artwork) {
+      // The drawn social card exports the same way as the derived one.
+      if (!frameLayout) { await page.locator('#event').selectOption('europe-2027'); await ready(); await pngExport(`${layout}-${theme}-europe`, layout); }
+      if (frameLayout) {
         // One of the project's interim frames exports the same way as organizer artwork.
         await page.locator('#event').selectOption('europe-2027'); await ready();
         await pngExport(`${layout}-${theme}-europe`, layout, { shape: theme });
@@ -160,34 +182,38 @@ try {
 
   assert.equal(await page.locator('#avatar').isChecked(), true); assert.equal(await page.locator('#avatar').isDisabled(), true);
   assert.equal(await page.locator('#name').isChecked(), true); assert.equal(await page.locator('#name').isDisabled(), true);
-  for (const id of ['handle', 'eventDetails']) {
+  for (const event of ['asia-2027', 'europe-2027']) for (const id of ['handle']) {
+    await page.locator('#event').selectOption(event); await ready();
     await page.locator('#' + id).uncheck(); const svg = await preview(); assert.equal(doc(svg).querySelector(`[data-field="${id}"]`), null, id);
-    if (id === 'handle') assert.ok(!svg.includes('@' + profile.userName));
+    if (id === 'handle') assert.ok(!svg.replace(/href="data:[^"]*"/g, '').includes('@' + profile.userName));
+    // Event dates and location are always shown: drawn as text, or inside the frame artwork.
+    assert.ok(doc(svg).querySelector(event === 'asia-2027' ? 'image[data-field="frame"]' : '[data-field="eventDetails"]'));
+    assert.ok(doc(svg).querySelector('[data-field="name"]'));
     await page.locator('#' + id).check(); await ready();
   }
-  await page.locator('#handle').uncheck(); await page.locator('#eventDetails').uncheck(); await page.locator('#event').selectOption('india-2027'); await page.locator('#role').selectOption('volunteer'); await ready();
+  await page.locator('#handle').uncheck(); await page.locator('#event').selectOption('india-2027'); await page.locator('#role').selectOption('volunteer'); await ready();
   const beforeRestore = await preview();
   const builder = new URL(await cardURLFromControls(page)); builder.pathname = '/create'; const params = builder.searchParams;
-  assert.equal(params.get('event'), 'india-2027'); assert.equal(params.get('role'), 'volunteer'); assert.equal(params.get('avatar'), 'true'); assert.equal(params.get('name'), 'true'); assert.equal(params.get('handle'), 'false'); assert.equal(params.get('eventDetails'), 'false');
+  assert.equal(params.get('event'), 'india-2027'); assert.equal(params.get('role'), 'volunteer'); assert.equal(params.get('avatar'), 'true'); assert.equal(params.get('name'), 'true'); assert.equal(params.get('handle'), 'false'); assert.equal(params.has('eventDetails'), false);
   for (const key of ['refresh', 'header', 'badges', 'link', 'userId', 'teams', 'omitTeams', 'jobTitle', 'organization', 'location', 'joined', 'badgeLabelColor']) assert.equal(params.has(key), false, key);
   await page.goto(builder.href); await page.locator('#create-button').click(); const restored = await preview();
   assert.equal(await page.locator('#event').inputValue(), 'india-2027'); assert.equal(await page.locator('#role').inputValue(), 'volunteer');
-  assert.ok(doc(restored).querySelector('[data-field="avatar"]')); assert.ok(doc(restored).querySelector('[data-field="name"]')); assert.equal(doc(restored).querySelector('[data-field="handle"]'), null); assert.equal(doc(restored).querySelector('[data-field="eventDetails"]'), null);
+  assert.ok(doc(restored).querySelector('[data-field="avatar"]')); assert.ok(doc(restored).querySelector('[data-field="name"]')); assert.equal(doc(restored).querySelector('[data-field="handle"]'), null); assert.ok(doc(restored).querySelector('[data-field="eventDetails"]'));
   assert.equal(createHash('sha256').update(restored).digest('hex'), createHash('sha256').update(beforeRestore).digest('hex'), 'restored event, role, colors and omissions must reproduce the same SVG');
-  check('required announcement identity and optional username/event details survive explicit builder URLs without irrelevant parameters');
+  check('required announcement identity and event details, and the optional username, survive explicit builder URLs without irrelevant parameters');
 
   // The avatar frame keeps its shape between visits and always includes the photo.
   await page.locator('#layout').selectOption('avatar'); await ready();
-  assert.equal(await page.locator('#shape').inputValue(), 'circle');
+  assert.equal(await page.locator('#shape-circle').isChecked(), true);
   assert.equal(await page.locator('#avatar').isVisible(), false); assert.equal(await page.locator('#avatar').isChecked(), true);
   await page.locator('#event').selectOption('asia-2027'); const roundFrame = await preview();
   assert.deepEqual([...doc(roundFrame).querySelector('svg').children].map(node => node.localName), ['title', 'desc', 'style', 'defs', 'g']);
-  await page.locator('#shape').selectOption('square'); const squareFrame = await preview();
+  await page.locator('#shape-square').check(); const squareFrame = await preview();
   assert.deepEqual([...doc(squareFrame).querySelector('svg').children].map(node => node.localName), ['title', 'desc', 'style', 'g', 'image']);
   for (const frame of [squareFrame, roundFrame]) assert.ok(doc(frame).querySelector('[data-field="avatar"] image'));
   await page.locator('#layout').selectOption('announcement'); await ready(); await page.locator('#layout').selectOption('avatar'); await ready();
-  assert.equal(await page.locator('#shape').inputValue(), 'square');
-  await page.locator('#shape').selectOption('circle');
+  assert.equal(await page.locator('#shape-square').isChecked(), true);
+  await page.locator('#shape-circle').check();
   await page.locator('#event').selectOption('india-2027'); await ready();
   await page.locator('#layout').selectOption('profile'); await ready(); assert.equal(doc(await preview()).querySelector('svg').getAttribute('data-layout'), 'profile');
   assert.equal(await page.locator('#event-settings').isHidden(), true); assert.equal(await page.locator('#avatar').isChecked(), true);
@@ -198,8 +224,8 @@ try {
   await page.locator('#layout').selectOption('classic'); await ready(); assert.equal(doc(await preview()).querySelector('svg').getAttribute('width'), '720');
   assert.equal(await page.locator('#badges').isChecked(), true);
   await page.locator('#link').check(); assert.ok(doc(await preview()).querySelector('a'));
-  await page.locator('#layout').selectOption('avatar'); await ready(); assert.equal(await page.locator('#avatar').isChecked(), true); assert.equal(await page.locator('#shape').inputValue(), 'circle');
-  await page.locator('#layout').selectOption('announcement'); await ready(); assert.equal(await page.locator('#name').isChecked(), true); assert.equal(await page.locator('#name').isDisabled(), true); assert.equal(await page.locator('#eventDetails').isChecked(), false);
+  await page.locator('#layout').selectOption('avatar'); await ready(); assert.equal(await page.locator('#avatar').isChecked(), true); assert.equal(await page.locator('#shape-circle').isChecked(), true);
+  await page.locator('#layout').selectOption('announcement'); await ready(); assert.equal(await page.locator('#name').isChecked(), true); assert.equal(await page.locator('#name').isDisabled(), true); assert.equal(await page.locator('#handle').isChecked(), false);
   await page.locator('#layout').selectOption('square'); await ready(); assert.equal(await page.locator('#badges').isChecked(), false);
   assert.equal(await page.locator('#link').isChecked(), true); assert.equal(await page.locator('#avatar').isChecked(), true);
   check('the always-included avatar photo, the shape and independent visibility choices survive all five layouts');
@@ -207,7 +233,6 @@ try {
   for (const layout of ['avatar', 'announcement']) {
     await page.locator('#layout').selectOption(layout);
     assert.equal(await page.locator('#avatar').isChecked(), true); assert.equal(await page.locator('#avatar').isDisabled(), true);
-    if (layout === 'announcement') await page.locator('#eventDetails').check();
     await page.locator('#event').selectOption('europe-2027'); await page.locator('#role').selectOption('attendee'); if (layout === 'announcement') await selectPalette(page, 'light'); await ready();
     for (const width of [1440, 1024, 768, 390, 320]) {
       await page.setViewportSize({ width, height: 950 }); await noOverflow();
@@ -258,15 +283,15 @@ try {
   await recovery.waitForFunction(() => document.getElementById('event').value === 'india-2027');
   await recovery.locator('#create-button').click(); await ready(recovery); assert.equal(await recovery.locator('#role').inputValue(), 'sponsor');
   const indiaText = [...doc(await preview(recovery)).querySelectorAll('text')].map(el => el.textContent).join(' '); assert.ok(indiaText.includes('Late 2027')); assert.ok(!/January 1|Host city TBA/.test(indiaText));
-  // An unknown edition, and one that is not offered, are both rejected in a shared link and by the card route.
-  for (const [layout, event] of [['avatar', 'unknown-2027'], ['announcement', 'us-2027'], ['avatar', 'us-2027']]) {
-    await recovery.goto(base + `/create?username=eidolonnight&layout=${layout}&event=${event}&role=${event === 'us-2027' ? 'attendee' : 'unknown'}`);
+  // An unknown edition is rejected in a shared link and by the card route, with or without a valid role.
+  for (const [layout, event] of [['avatar', 'unknown-2027'], ['announcement', 'asia-2026'], ['avatar', 'asia-2026']]) {
+    await recovery.goto(base + `/create?username=eidolonnight&layout=${layout}&event=${event}&role=${event === 'asia-2026' ? 'attendee' : 'unknown'}`);
     await recovery.waitForFunction(() => document.getElementById('status').textContent.includes('Some URL settings were invalid'));
     assert.equal(await recovery.locator('#exports').evaluate(el => el.disabled), true, `${layout}/${event}`);
     assert.deepEqual(await recovery.locator('#event option').allTextContents(), ['WordCamp Asia', 'WordCamp Europe', 'WordCamp India']);
   }
-  assert.equal((await context.request.get(base + '/card?username=eidolonnight&layout=announcement&event=us-2027')).status(), 400);
-  for (const invalid of ['layout=avatar&avatar=false', 'layout=avatar&shape=oval', 'layout=announcement&shape=square']) {
+  assert.equal((await context.request.get(base + '/card?username=eidolonnight&layout=announcement&event=asia-2026')).status(), 400);
+  for (const invalid of ['layout=avatar&avatar=false', 'layout=avatar&shape=oval', 'layout=announcement&shape=square', 'layout=announcement&eventDetails=false']) {
     await recovery.goto(base + '/create?username=eidolonnight&' + invalid);
     await recovery.waitForFunction(() => document.getElementById('status').textContent.includes('Some URL settings were invalid'));
     assert.equal(await recovery.locator('#exports').evaluate(el => el.disabled), true, invalid);
@@ -274,7 +299,7 @@ try {
   for (const [event, role, shape] of [['asia-2027', 'mediapartner', 'square'], ['india-2027', 'speaker', 'circle'], ['europe-2027', 'organizer', null]]) {
     await recovery.goto(base + `/create?username=eidolonnight&layout=avatar&event=${event}&role=${role}` + (shape ? `&shape=${shape}` : ''));
     await recovery.waitForFunction(role => document.getElementById('role').value === role, role);
-    assert.equal(await recovery.locator('#shape').inputValue(), shape || 'circle');
+    assert.equal(await recovery.locator(`#shape-${shape || 'circle'}`).isChecked(), true);
     await recovery.locator('#create-button').click(); await ready(recovery);
     const shared = await preview(recovery);
     assert.equal(doc(shared).querySelector('svg').getAttribute('data-shape'), shape || 'circle');
@@ -284,7 +309,7 @@ try {
     assert.equal(doc(shared).querySelector('image[data-field="frame"]').getAttribute('href'), 'data:image/png;base64,' + (await published.body()).toString('base64'), `${event}/${role}: builder embeds the published artwork`);
     const card = new URL(await cardURLFromControls(recovery)); assert.equal(card.searchParams.get('shape'), shape || 'circle'); assert.equal(card.searchParams.get('avatar'), 'true');
     assert.equal((await context.request.get(card.href)).status(), 400);
-    assert.equal(await recovery.locator('#download-svg').isVisible(), false);
+    assert.equal(await recovery.locator('#download-svg').count(), 0);
   }
   await recovery.close();
   check('catalog failure has a usable retry, restores pending selections, and rejects unknown shared event/role settings');

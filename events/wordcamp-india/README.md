@@ -2,7 +2,7 @@
 
 This folder holds every edition of WordCamp India. Keep it year-free.
 
-- [theme.js](theme.js): default colors, style notes and layout choices.
+- [theme.js](theme.js): default colors and style notes.
 - [artwork.js](artwork.js): original SVG decorations and event headings.
 - [fonts/](fonts/): pinned fonts, original licenses and [edition face selections/source records](fonts/manifest.json).
 - [frames/](frames/): avatar-frame PNGs, one per role, with their [source, rights and photo window](frames/manifest.json). The 2027 set is interim artwork drawn by this project, not supplied by the event.

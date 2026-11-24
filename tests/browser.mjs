@@ -23,7 +23,7 @@ try {
   const response = await page.goto(base, { waitUntil: 'networkidle' }); assert.equal(response.status(), 200); report.version = response.headers()['x-spacefast-version'] || null;
   await assertInitialDemo(page); check('fresh builder renders the bundled Matt demo without profile API requests');
   await page.locator('#layout').selectOption(cardLayout); check(`${cardLayout} layout remains available`);
-  if (cardLayout === 'square') assert.equal(await page.locator('#layout option:checked').innerText(), 'Vertical card');
+  if (cardLayout === 'square') assert.equal(await page.locator('#layout option:checked').innerText(), 'Vertical profile card');
   await page.locator('#username').fill('eidolonnight'); await page.locator('#create-button').click(); await ready();
   const api = await context.request.get(base + '/json?username=eidolonnight'); assert.equal(api.status(), 200); const profile = await api.json(); assert.equal(profile.userName, 'eidolonnight'); assert.equal(profile.name, 'Nicholas Garofalo'); report.badges = profile.badges.length; check('live profile JSON and decoded card preview');
   const popupReady = context.waitForEvent('page'); await page.locator('#open-preview').click(); const popup = await popupReady; await popup.waitForLoadState(); assert.ok(popup.url().startsWith('blob:')); assert.ok((await popup.locator('svg').textContent()).includes('Nicholas Garofalo')); await popup.close(); check('full-size preview opens the real card for mobile inspection');
@@ -32,7 +32,9 @@ try {
     const wait = page.waitForEvent('download'); await page.locator(id).click(); const item = await wait; assert.ok(item.suggestedFilename().endsWith(extension));
     const path = evidence + '/' + filename; await item.saveAs(path); const bytes = await readFile(path); assert.ok(bytes.length > 100); return bytes;
   };
-  const svg = await download('#download-svg', '.svg'); assert.ok(svg.toString().includes('data:image/')); assert.ok(!svg.toString().includes('<foreignObject')); for (const b of profile.badges) assert.ok(svg.toString().includes(b.name.replaceAll('&', '&amp;'))); check('SVG download contains the real embedded avatar and every badge');
+  // PNG is the only download. The displayed SVG it is made from is read from the preview.
+  assert.equal(await page.locator('#download-svg').count(), 0);
+  const svg = Buffer.from(await page.locator('#card-preview').evaluate(async image => (await fetch(image.src)).text())); assert.ok(svg.toString().includes('data:image/')); assert.ok(!svg.toString().includes('<foreignObject')); for (const b of profile.badges) assert.ok(svg.toString().includes(b.name.replaceAll('&', '&amp;'))); check('displayed card contains the real embedded avatar and every badge; there is no SVG download');
   const png = await download('#download-png', '.png'); assert.equal(png.subarray(0, 8).toString('hex'), '89504e470d0a1a0a'); assert.equal(png.readUInt32BE(16), 1440); report.png = { bytes: png.length, width: png.readUInt32BE(16), height: png.readUInt32BE(20), sha256: createHash('sha256').update(png).digest('hex') }; check('actual canvas PNG download');
   if (cardLayout === 'square') {
     assert.equal(png.readUInt32BE(20), 1440);

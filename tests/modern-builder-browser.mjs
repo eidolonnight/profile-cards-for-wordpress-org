@@ -182,8 +182,8 @@ try {
     assert.equal(direct.status(), 200);
     assert.equal(await direct.text(), svg, `${layout} all-fields canonical server parity`);
     for (const key of ['name', 'handle', 'jobLine', 'location', 'joined', 'teams', 'badges', 'link', 'social']) assert.ok(info.fields.includes(key), `${layout} missing ${key}`);
-    assert.ok(info.text.includes('profiles.wp.org/eidolonnight/'));
-    assert.ok(info.links.some(l => l.href === 'https://profiles.wp.org/eidolonnight/'));
+    assert.ok(info.text.includes('w.org/@eidolonnight'));
+    assert.ok(info.links.some(l => l.href === 'https://w.org/@eidolonnight'));
     for (const badge of profile.badges) assert.equal(info.badges.find(b => b.name === badge.name)?.text.replace(/\s+/g, ''), badge.name.replace(/\s+/g, ''), `${layout} complete label ${badge.name}`);
     assert.ok(info.badges.length >= profile.badges.length, `${layout} badge icons retained`);
     for (const link of info.links) { const u = new URL(link.href); assert.ok(['https:', 'http:'].includes(u.protocol)); assert.equal(u.username, ''); assert.equal(u.password, ''); assert.equal(link.target, '_blank'); assert.match(link.rel, /noopener/); assert.match(link.rel, /noreferrer/); }
@@ -197,11 +197,12 @@ try {
     assert.ok(sequence.indexOf('social') < sequence.indexOf('teams'));
     assert.ok(sequence.indexOf('social') < sequence.indexOf('badges'));
     await inspectCardGeometry(context, page, layout);
-    for (const format of ['svg', 'png']) {
+    // PNG is the only download.
+    assert.equal(await page.locator('#download-svg').count(), 0);
+    for (const format of ['png']) {
       const downloading = page.waitForEvent('download'); await page.locator('#download-' + format).click(); const d = await downloading;
       const path = `${evidence}/${layout}-all.${format}`; await d.saveAs(path); const bytes = await readFile(path);
-      if (format === 'svg') assert.equal(bytes.toString(), svg);
-      else { assert.equal(bytes.subarray(0, 8).toString('hex'), '89504e470d0a1a0a'); const w = bytes.readUInt32BE(16), h = bytes.readUInt32BE(20); assert.ok(w > 0 && h > 0); if (layout === 'square') assert.deepEqual([w, h], [1440, 1440]); }
+      assert.equal(bytes.subarray(0, 8).toString('hex'), '89504e470d0a1a0a'); const w = bytes.readUInt32BE(16), h = bytes.readUInt32BE(20); assert.ok(w > 0 && h > 0); if (layout === 'square') assert.deepEqual([w, h], [1440, 1440]);
       report.exports.push({ layout, format, bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') });
     }
     await page.locator('#customize-colors summary').click();

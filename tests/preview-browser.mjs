@@ -34,10 +34,10 @@ const source = page => page.locator('#card-preview').evaluate(image => fetch(ima
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
 // Avatar frames have no server rendering to compare with: the builder alone composes
 // them from the published PNG, and the card route refuses the same settings.
-const frameOnly = async (page, action) => {
+const frameOnly = async (page, layout, action) => {
   await assertDownloadOnlyActions(page);
   const local = await source(page);
-  assert.match(local, /data-layout="avatar"/); assert.match(local, /<image data-field="frame" /); assert.match(local, /<g data-field="avatar"><defs>/);
+  assert.ok(local.includes(`data-layout="${layout}"`)); assert.match(local, /<image data-field="frame" /); assert.match(local, /<g data-field="avatar"><defs>/);
   const refused = await context.request.get(await cardURLFromControls(page)); assert.equal(refused.status(), 400);
   assert.equal((await refused.json()).error.code, 'invalid_option');
   report.frames.push({ action, bytes: Buffer.byteLength(local) });
@@ -66,28 +66,33 @@ try {
     const actions = layout === 'announcement' ? ['dark', 'light'] : ['dark', 'light', 'hide-avatar', 'show-avatar'];
     // Avatar frames are PNG artwork with a shape, no palette and always the photo:
     // organizer artwork for the default edition, one of the project's interim frames for Europe.
-    const variants = layout === 'avatar' ? [['asia-2027', ['square', 'circle']], ['europe-2027', ['square', 'circle']]] : [[null, actions]];
+    // The WordCamp Asia social card is that edition's frame artwork too (a role switch
+    // here); another edition's social card is drawn and matches the card route.
+    const variants = layout === 'avatar' ? [['asia-2027', ['square', 'circle']], ['europe-2027', ['square', 'circle']]]
+      : layout === 'announcement' ? [['asia-2027', ['role:speaker', 'role:attendee']], ['europe-2027', actions]] : [[null, actions]];
     for (const [event, steps] of variants) {
       if (event) { await page.locator('#event').selectOption(event); await ready(page); }
       const artwork = (await source(page)).includes('data-field="frame"');
-      assert.equal(artwork, layout === 'avatar');
+      assert.equal(artwork, layout === 'avatar' || (layout === 'announcement' && event === 'asia-2027'));
       assert.equal(await page.locator('#customize-colors').isVisible(), !artwork);
-      assert.equal(await page.locator('#avatar').isVisible(), !artwork);
+      // The photo is a choice only for profile formats; WordCamp graphics always include it.
+      assert.equal(await page.locator('#avatar').isVisible(), !artwork && layout !== 'announcement');
       for (const action of steps) {
         const before = traffic.length;
-        if (artwork) await page.locator('#shape').selectOption(action);
+        if (action.startsWith('role:')) await page.locator('#role').selectOption(action.slice(5));
+        else if (artwork) await page.locator('#shape-' + action).check();
         else if (action.endsWith('avatar')) await page.locator('#avatar').setChecked(action === 'show-avatar');
         else await selectPalette(page, action);
         await ready(page);
         assert.equal(traffic.length, before, `${layout}/${action} made a network request`);
-        if (artwork) await frameOnly(page, `${event}/${action}`);
+        if (artwork) await frameOnly(page, layout, `${layout}/${event}/${action}`);
         else await parity(page, layout, action);
       }
     }
   }
-  assert.equal(report.equality.length, 14); assert.equal(report.frames.length, 4);
+  assert.equal(report.equality.length, 14); assert.equal(report.frames.length, 6);
   assert.deepEqual(traffic.filter(path => path.startsWith('/preview-data?')).map(path => new URL(path, base).searchParams.get('size')), ['all']);
-  await check('14 valid real-profile SVGs exactly equal canonical /card; 4 avatar frames render in the browser only and /card refuses them; one lookup preloads both photo variants; warm changes make zero requests');
+  await check('14 valid real-profile SVGs exactly equal canonical /card; 4 avatar frames and 2 frame-derived social cards render in the browser only and /card refuses them; one lookup preloads both photo variants; warm changes make zero requests');
   await page.locator('#layout').selectOption('profile'); await ready(page);
   const beforeRapid = traffic.length;
   await page.evaluate(() => {

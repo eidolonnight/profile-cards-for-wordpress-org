@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, stat } from 'node:fs/promises';
 const root = new URL('../', import.meta.url);
-const regions = ['asia', 'europe', 'india', 'us'];
+const regions = ['asia', 'europe', 'india'];
 
 test('human README stays short and explains organizer updates through agent PRs', async () => {
   const readme = await readFile(new URL('README.md', root), 'utf8');

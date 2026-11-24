@@ -52,6 +52,46 @@ for (const layout of ['profile', 'square']) {
   });
 }
 
+for (const avatar of [true, false]) {
+  test(`profile: named badges sit in fixed columns like the vertical card, avatar=${avatar}`, () => {
+    // The copy column is 1236 wide beside the photo and 1620 without it.
+    const width = avatar ? 1236 : 1620; const columns = avatar ? 3 : 4; const cellWidth = (width - 12 * (columns - 1)) / columns;
+    for (const count of [1, 2, 3, 4, 5, 11, 41]) {
+      const p = fixture();
+      p.badges = Array.from({ length: count }, (_, i) => ({ name: i % 4 === 1 ? `Badge ${i} ${'Long label 界😀W '.repeat(9).trim()}` : ['Core Contributor', 'Documentation Contributor', 'Marketing Team', 'WordPress.tv Contributor'][i % 4], class: '' }));
+      const d = doc('profile', { badges: true, badgeNames: true, avatar }, p);
+      const badges = [...d.querySelectorAll('[data-badge]')];
+      assert.equal(badges.length, count);
+      for (let i = 0; i < count; i += columns) {
+        const row = badges.slice(i, i + columns);
+        const y = n(row[0], 'data-y');
+        row.forEach((badge, col) => {
+          // Every row starts each column at the same x, whatever the label lengths.
+          near(n(badge, 'data-x'), col * (cellWidth + 12));
+          near(n(badge, 'data-y'), y);
+          assert.ok(n(badge, 'data-width') <= cellWidth);
+          const texts = [...badge.querySelectorAll('text')];
+          assert.equal(texts.map(t => t.textContent).join('').replaceAll(' ', ''), p.badges[i + col].name.replaceAll(' ', ''));
+          for (const text of texts) assert.ok(measureText(text.textContent, n(text, 'font-size')) <= n(text, 'data-max-width'));
+          // Ordinary badge names stay on one line at this column width.
+          if ((i + col) % 4 !== 1) assert.equal(texts.length, 1, p.badges[i + col].name);
+        });
+        if (badges[i + columns]) near(n(badges[i + columns], 'data-y'), y + Math.max(...row.map(b => n(b, 'data-height'))) + 12);
+      }
+      const root = d.querySelector('svg'); const last = badges.at(-1);
+      const [, top] = position(d.querySelector('[data-profile-extras]'));
+      assert.ok(top + n(last, 'data-y') + n(last, 'data-height') <= n(root, 'height'), 'the canvas grows to hold every row');
+    }
+  });
+}
+
+test('profile: badges without names stay a compact, evenly spaced row', () => {
+  const p = fixture();
+  p.badges = Array.from({ length: 8 }, (_, i) => ({ name: `Badge ${i}`, class: '' }));
+  const badges = [...doc('profile', { badges: true, badgeNames: false }, p).querySelectorAll('[data-badge]')];
+  badges.forEach((badge, i) => { near(n(badge, 'data-x'), i * 52); near(n(badge, 'data-y'), n(badges[0], 'data-y')); });
+});
+
 for (const badgeNames of [true, false]) {
   test(`square: fixed three-column badge rows, complete labels=${badgeNames}, tallest-cell spacing`, () => {
     for (const count of [1, 2, 3, 8, 41]) {

@@ -13,6 +13,14 @@
         "organizer": "asia-2027-organizer.png",
         "sponsor": "asia-2027-sponsor.png",
         "mediapartner": "asia-2027-mediapartner.png"
+      },
+      "bands": {
+        "attendee": "asia-2027-attendee-band.png",
+        "speaker": "asia-2027-speaker-band.png",
+        "volunteer": "asia-2027-volunteer-band.png",
+        "organizer": "asia-2027-organizer-band.png",
+        "sponsor": "asia-2027-sponsor-band.png",
+        "mediapartner": "asia-2027-mediapartner-band.png"
       }
     }
   },
@@ -84,6 +92,60 @@
       "sourceSha256": "a5b4b5820ca6051bc28b875c9793baa24e1b827f401f689940f17e02bcd68bf8",
       "sourceBytes": 573725,
       "conversion": "Lossless recompression with oxipng 9.1.1 (level 6, safe chunk stripping, RGBA kept); decoded pixels are identical to the supplied file."
+    },
+    {
+      "path": "asia-2027-attendee-band.png",
+      "sha256": "ccbcb588f6876a34218159b058fc61288308368ae63ee48976be225dc39ba739",
+      "bytes": 2895,
+      "width": 1500,
+      "height": 383,
+      "sourceName": "asia-2027-attendee.png",
+      "conversion": "Derived from this role's frame by tools/build-event-frames.mjs --bands: the frame's background continued above its top edge. Then: lossless recompression with oxipng 9.1.1 (level 6, safe chunk stripping, RGBA kept)."
+    },
+    {
+      "path": "asia-2027-speaker-band.png",
+      "sha256": "7f77ca3d536f71f6fea90b1da786c5ebff2d26634ab71ea5874ae600a164f9e8",
+      "bytes": 34556,
+      "width": 1500,
+      "height": 383,
+      "sourceName": "asia-2027-speaker.png",
+      "conversion": "Derived from this role's frame by tools/build-event-frames.mjs --bands: the frame's background continued above its top edge. Then: lossless recompression with oxipng 9.1.1 (level 6, safe chunk stripping, RGBA kept)."
+    },
+    {
+      "path": "asia-2027-volunteer-band.png",
+      "sha256": "a3af2708b1b32646f5dd95a244f0461e210c7a73f688da1e3640a24f0dafd76e",
+      "bytes": 23524,
+      "width": 1500,
+      "height": 383,
+      "sourceName": "asia-2027-volunteer.png",
+      "conversion": "Derived from this role's frame by tools/build-event-frames.mjs --bands: the frame's background continued above its top edge. Then: lossless recompression with oxipng 9.1.1 (level 6, safe chunk stripping, RGBA kept)."
+    },
+    {
+      "path": "asia-2027-organizer-band.png",
+      "sha256": "6be5bc03aaa2c9ce4638264481e1e48cac26134ce68cbf680026f8b2eeeef085",
+      "bytes": 21613,
+      "width": 1500,
+      "height": 383,
+      "sourceName": "asia-2027-organizer.png",
+      "conversion": "Derived from this role's frame by tools/build-event-frames.mjs --bands: the frame's background continued above its top edge. Then: lossless recompression with oxipng 9.1.1 (level 6, safe chunk stripping, RGBA kept)."
+    },
+    {
+      "path": "asia-2027-sponsor-band.png",
+      "sha256": "58907f3a78f33e7f3b12f9e8d65d06b7169cc8188a40e99f3623098933912ca2",
+      "bytes": 40868,
+      "width": 1500,
+      "height": 383,
+      "sourceName": "asia-2027-sponsor.png",
+      "conversion": "Derived from this role's frame by tools/build-event-frames.mjs --bands: the frame's background continued above its top edge. Then: lossless recompression with oxipng 9.1.1 (level 6, safe chunk stripping, RGBA kept)."
+    },
+    {
+      "path": "asia-2027-mediapartner-band.png",
+      "sha256": "251033d2f6c75b58d45060d101eb98862c8a1122fd930f729e8c446c06e01d81",
+      "bytes": 35884,
+      "width": 1500,
+      "height": 383,
+      "sourceName": "asia-2027-mediapartner.png",
+      "conversion": "Derived from this role's frame by tools/build-event-frames.mjs --bands: the frame's background continued above its top edge. Then: lossless recompression with oxipng 9.1.1 (level 6, safe chunk stripping, RGBA kept)."
     }
   ]
 }

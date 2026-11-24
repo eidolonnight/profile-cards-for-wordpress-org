@@ -32,7 +32,6 @@ try {
     record.sourceHashes[path] = createHash('sha256').update(await r.body()).digest('hex');
   }
   const catalog = await (await context.request.get(origin + '/events')).json();
-  // WordCamp US has no edition yet, so it is not offered.
   assert.deepEqual(catalog.events.map(e => e.id), ['asia-2027', 'europe-2027', 'india-2027']);
   for (const e of catalog.events) {
     assert.deepEqual(Object.keys(e.colors).sort(), [...keys].sort());
@@ -47,18 +46,21 @@ try {
   await page.locator('#username').fill('eidolonnight'); await page.locator('#create-button').click(); await ready();
   for (const layout of ['avatar', 'announcement']) {
     await page.locator('#layout').selectOption(layout); await ready();
-    // Color controls belong to the social card; avatar frames are finished artwork.
-    const artwork = layout === 'avatar';
-    if (!artwork) {
+    // Color controls belong to a drawn social card; avatar frames are finished artwork,
+    // and so is a social card derived from them (WordCamp Asia).
+    const frameLayout = layout === 'avatar';
+    if (!frameLayout) {
+      await page.locator('#event').selectOption('europe-2027'); await ready();
       if (!await page.locator('#customize-colors').evaluate(n => n.open)) await page.locator('#customize-colors summary').click();
       assert.equal(await page.locator('#preset-event').isVisible(), true);
     }
     for (const event of catalog.events) {
       await page.locator('#event').selectOption(event.id); await ready();
+      const artwork = frameLayout || event.frameCard === true;
+      assert.equal(event.frameCard === true, event.id === 'asia-2027');
       // Frame artwork is not recolored; the automatic palette still follows the event.
       assert.ok(event.frameRoles?.length, `${event.id}: every edition has avatar-frame artwork`);
       assert.equal(await page.locator('#customize-colors').isVisible(), !artwork, `${layout}/${event.id} color controls`);
-      assert.equal(await page.locator('#frame-note').isVisible(), artwork, `${layout}/${event.id} artwork note`);
       await assertColors(event.colors, `${layout}/${event.id} automatic source palette`);
       assert.equal(await page.locator('#event-note').isHidden(), true);
       assert.equal(await page.locator('#event-note').textContent(), '');
@@ -67,9 +69,8 @@ try {
       assert.ok(parseHTML(svg).document.querySelector('[data-field="avatar"] image'), 'the real profile photo must remain embedded, not silently fall back to initials');
       assert.equal(parseHTML(svg).document.querySelectorAll('image[data-field="frame"]').length, artwork ? 1 : 0);
       const file = `${event.id}-${layout}`;
-      // An avatar frame downloads as a PNG only; the other format also offers its SVG.
-      assert.equal(await page.locator('#download-svg').isVisible(), !artwork);
-      if (!artwork) { const saved = await download('#download-svg', file + '.svg'); assert.equal(saved.toString(), svg); }
+      // Both formats download as a PNG only.
+      assert.equal(await page.locator('#download-svg').count(), 0);
       const png = await download('#download-png', file + '.png');
       assert.equal(png.readUInt32BE(16), 1080); assert.equal(png.readUInt32BE(20), layout === 'avatar' ? 1080 : 1350);
       await assertDownloadedPNG(page, png);
@@ -78,7 +79,7 @@ try {
       const hash = 'sha256-' + createHash('sha256').update(css).digest('base64');
       let faces = [];
       if (artwork) {
-        // Avatar frames are composed in the browser from the published PNG; the card route has none.
+        // Frame artwork is composed in the browser from the published PNG; the card route has none.
         assert.equal(direct.status(), 400);
         const published = await context.request.get(`${origin}/frames/${event.id}-${await page.locator('#role').inputValue()}.png`); assert.equal(published.status(), 200);
         assert.equal(parseHTML(svg).document.querySelector('image[data-field="frame"]').getAttribute('href'), 'data:image/png;base64,' + (await published.body()).toString('base64'));
@@ -102,12 +103,13 @@ try {
     }
   }
   assert.equal(record.cases.length, 6); assert.equal(new Set(record.cases.map(c => c.layout + '/' + c.event)).size, 6);
-  record.checks.push('All three offered events in both formats: automatic colors, actual downloads and mobile overflow; social cards match the canonical SVG with exact CSP and embedded fonts; avatar frames embed the published PNG and download as PNG only');
+  record.checks.push('All three offered events in both formats: automatic colors, actual downloads and mobile overflow; drawn social cards match the canonical SVG with exact CSP and embedded fonts; avatar frames and the frame-derived WordCamp Asia social card embed the published PNG and are refused by the card route');
   await page.locator('#foreground').evaluate(n => { n.value = '#2e3429'; n.dispatchEvent(new Event('input', { bubbles: true })); }); await ready();
-  await page.locator('#event').selectOption('asia-2027'); await ready();
-  const asia = catalog.events.find(e => e.id === 'asia-2027');
-  await assertColors({ ...asia.colors, foreground: '2E3429' }, 'individual customization survives event change while automatic colors follow event');
-  await page.locator('#preset-event').click(); await ready(); await assertColors(asia.colors);
+  // Between two editions whose social cards are drawn, and so have color controls.
+  await page.locator('#event').selectOption('europe-2027'); await ready();
+  const europe = catalog.events.find(e => e.id === 'europe-2027');
+  await assertColors({ ...europe.colors, foreground: '2E3429' }, 'individual customization survives event change while automatic colors follow event');
+  await page.locator('#preset-event').click(); await ready(); await assertColors(europe.colors);
   await page.locator('#preset-dark').click(); await ready();
   for (const event of catalog.events) { await page.locator('#event').selectOption(event.id); await ready(); await assertColors(Object.fromEntries(keys.map((k, i) => [k, dark[i]])), 'manual Dark palette survives every event'); }
   await page.locator('#preset-event').click(); await ready();
@@ -132,7 +134,7 @@ try {
   assert.equal(await page.locator('#card-preview').isHidden(), true);
   await page.unroute('**/events'); await page.locator('#retry-events').click();
   await page.waitForFunction(() => !document.getElementById('event-controls').disabled);
-  await page.locator('#create-button').click(); await ready(); await assertColors(asia.colors);
+  await page.locator('#create-button').click(); await ready(); await assertColors(catalog.events.find(e => e.id === 'asia-2027').colors);
   record.checks.push('Malformed remote palette fails closed and recovers through the actual retry control');
   assert.deepEqual(record.errors, []); assert.deepEqual(record.externalRequests, []); assert.deepEqual(record.failedResponses, []);
   record.pass = true;

@@ -7,23 +7,32 @@ const root = new URL('../', import.meta.url);
 
 test('builder leads with the default WordCamp social card while preserving profile/classic choices', async () => {
   const { document } = parseHTML(await readFile(new URL('public/index.html', root), 'utf8'));
-  assert.deepEqual([...document.querySelectorAll('#layout option:not([hidden])')].map(option => [option.value, option.textContent]), [['announcement', 'WordCamp social card'], ['avatar', 'WordCamp avatar frame'], ['square', 'Vertical card'], ['profile', 'Landscape banner']]);
+  assert.deepEqual([...document.querySelectorAll('#layout option:not([hidden])')].map(option => [option.value, option.textContent]), [['announcement', 'WordCamp social card'], ['avatar', 'WordCamp avatar frame'], ['square', 'Vertical profile card'], ['profile', 'Landscape profile banner']]);
   assert.equal(document.querySelector('#layout option[selected]').value, 'announcement');
   assert.ok(document.querySelector('#layout option[value="classic"][hidden]'));
   assert.equal(document.querySelectorAll('#display-settings > legend').length, 1);
   assert.equal(document.querySelectorAll('#profile-fields legend').length, 0);
   assert.ok(document.querySelector('#display-settings #name'));
   assert.ok(document.querySelector('#profile-link-setting #link'));
-  for (const id of ['event', 'role', 'eventDetails']) {
+  for (const id of ['event', 'role']) {
     assert.ok(document.getElementById(id), id);
     assert.ok(document.querySelector(`label[for="${id}"]`), `accessible ${id} label`);
   }
+  // The event options have no visible heading; the group keeps a name for assistive technology.
+  assert.equal(document.querySelector('#event-settings legend:not(#shape-setting legend)'), null);
+  assert.equal(document.body.textContent.includes('Your WordCamp'), false);
+  assert.equal(document.getElementById('event-controls').getAttribute('aria-label'), 'WordCamp');
+  assert.equal(document.getElementById('eventDetails'), null);
+  assert.equal(document.body.textContent.includes('Event dates'), false);
   assert.ok(document.getElementById('event-settings').hasAttribute('hidden'));
   assert.ok(document.getElementById('event-controls').hasAttribute('disabled'));
   assert.ok(document.querySelector('#event-source[rel="noopener noreferrer"]'));
   assert.ok(document.getElementById('retry-events'));
   assert.match(document.getElementById('role-help').textContent, /self-reported/i);
-  assert.match(document.getElementById('layout-help').textContent, /4:5/);
+  // The format menu has no help text under it.
+  assert.equal(document.getElementById('layout-help'), null);
+  assert.equal(document.getElementById('layout').hasAttribute('aria-describedby'), false);
+  assert.equal(document.querySelector('.layout-setting .field-help'), null);
   assert.ok(document.querySelector('.controls #display-settings'));
   assert.ok(document.querySelector('.result #card-preview'));
   assert.equal(document.querySelectorAll('#userId,#website,#github,#slack,#linkColor').length, 0);

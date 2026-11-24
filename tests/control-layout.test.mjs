@@ -17,6 +17,19 @@ test('developer-counted steps start at 00 and the first step starts with usernam
   assert.equal(document.querySelector('#background-file').closest('form'), null, 'local image must never become a submitting form field');
 });
 
+test('username help keeps its guidance and points people without an account to WordPress.org registration', () => {
+  const help = document.querySelector('#profile-form > #username-help');
+  assert.equal(document.querySelector('#username').getAttribute('aria-describedby'), 'username-help');
+  assert.equal(help.textContent.replace(/\s+/g, ' ').trim(), 'Use your profile’s lowercase username, not your display name or its full URL. If you don’t have an account, you can sign up at login.wordpress.org/register ↗.');
+  const links = help.querySelectorAll('a');
+  assert.equal(links.length, 1);
+  assert.equal(links[0].getAttribute('href'), 'https://login.wordpress.org/register');
+  // A new tab keeps the builder and its settings open.
+  assert.equal(links[0].getAttribute('target'), '_blank');
+  assert.equal(links[0].getAttribute('rel'), 'noopener noreferrer');
+  assert.equal(links[0].querySelector('span[aria-hidden="true"]').textContent, '↗');
+});
+
 test('Color palette is removed without losing the named colors disclosure or presets', () => {
   assert.doesNotMatch(document.documentElement.textContent, /Color palette/i);
   assert.equal(document.querySelector('.palette-settings'), null);

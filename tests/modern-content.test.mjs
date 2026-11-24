@@ -35,11 +35,11 @@ for (const layout of ['profile', 'square']) {
   test(`${layout}: short profile link is adjacent to handle, precedes location/teams/badges and ignores upstream URL`, () => {
     const d = doc(layout, { link: true, badges: true }, { ...fixture(), profileUrl: 'javascript:evil()' });
     const link = field(d, 'link');
-    assert.equal(link.querySelector('a').getAttribute('href'), 'https://profiles.wp.org/fixture/');
-    assert.equal(link.textContent, 'profiles.wp.org/fixture/');
+    assert.equal(link.querySelector('a').getAttribute('href'), 'https://w.org/@fixture');
+    assert.equal(link.textContent, 'w.org/@fixture');
     const fields = [...d.querySelectorAll('[data-field]')].map(n => n.getAttribute('data-field'));
     assert.ok(fields.indexOf('handle') < fields.indexOf('link')); assert.ok(fields.indexOf('link') < fields.indexOf('location'));
-    assert.equal(field(doc(layout, { header: false, badges: false, link: true }), 'link').textContent, 'profiles.wp.org/fixture/');
+    assert.equal(field(doc(layout, { header: false, badges: false, link: true }), 'link').textContent, 'w.org/@fixture');
     for (const userName of ['../bad', 'a\n', 'Uppercase', 'a'.repeat(61)]) assert.equal(field(doc(layout, { link: true }, { ...fixture(), userName }), 'link'), null);
   });
   test(`${layout}: links follow secondary colors unless explicitly overridden`, () => {
@@ -120,7 +120,7 @@ for (const layout of ['profile', 'square']) {
     const p = fixture(); p.userName = 'w'.repeat(60); p.jobTitle = '界😀W'.repeat(80); p.organization = 'M'.repeat(100); p.teams = Array.from({ length: 40 }, (_, i) => `Team${i}${'W界'.repeat(35)}`);
     const d = doc(layout, { link: true, badges: true, badgeNames: true }, p);
     assert.equal(d.querySelectorAll('[data-field="link"] a').length, 1);
-    assert.equal([...d.querySelectorAll('[data-field="link"] text')].map(n => n.textContent).join(''), `profiles.wp.org/${p.userName}/`);
+    assert.equal([...d.querySelectorAll('[data-field="link"] text')].map(n => n.textContent).join(''), `w.org/@${p.userName}`);
     assert.equal([...d.querySelectorAll('[data-field="jobLine"] text')].map(n => n.textContent).join('').replaceAll(' ', ''), `${p.jobTitle}at${p.organization}`);
     const teams = [...d.querySelectorAll('[data-team]')]; assert.equal(teams.length, 40);
     for (const [i, team] of teams.entries()) assert.equal([...team.querySelectorAll('text')].map(n => n.textContent).join(''), p.teams[i]);

@@ -70,7 +70,6 @@ terms, copyright notices and any reserved-font-name restrictions. See the
 | Faculty Glyphic | [facultyglyphic-OFL.txt](events/wordcamp-asia/fonts/facultyglyphic-OFL.txt) | [Asia fonts](events/wordcamp-asia/fonts/manifest.json) |
 | Kumbh Sans | [kumbhsans-OFL.txt](events/wordcamp-asia/fonts/kumbhsans-OFL.txt) | [Asia fonts](events/wordcamp-asia/fonts/manifest.json) |
 | Cardo | [Europe](events/wordcamp-europe/fonts/cardo-OFL.txt), [India](events/wordcamp-india/fonts/cardo-OFL.txt) | [Europe](events/wordcamp-europe/fonts/manifest.json), [India](events/wordcamp-india/fonts/manifest.json) |
-| Open Sans | [OpenSans-OFL.txt](events/wordcamp-us/fonts/OpenSans-OFL.txt) | [US fonts](events/wordcamp-us/fonts/manifest.json), including original TTFs and WOFF2 conversion details |
 
 Font binaries embedded as data URLs in `shared/fonts.js` and `events/fonts.js`
 retain the OFL. The surrounding project-authored JavaScript is GPL-2.0-or-later.

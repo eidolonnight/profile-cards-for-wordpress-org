@@ -3,54 +3,59 @@ import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
 
 const root = new URL('../', import.meta.url);
-const regions = ['asia', 'europe', 'us', 'india'];
+const regions = ['asia', 'europe', 'india'];
+// Editions whose social card is drawn here. WordCamp Asia's is made from its frame artwork.
+const drawn = ['europe', 'india'];
 const load = path => import(new URL(path, root));
 const source = path => readFile(new URL(path, root), 'utf8');
 
-test('event directories own immutable editions, theme tokens, layout preferences and artwork', async () => {
+test('event directories own immutable editions, theme tokens and artwork', async () => {
   const { EVENTS } = await load('events/catalog.js');
-  const { EVENT_THEMES, EVENT_LAYOUTS } = await load('events/themes.js');
+  const themes = await load('events/themes.js');
+  const { EVENT_THEMES } = themes;
   const { EVENT_ARTWORK } = await load('events/artwork.js');
   const { EVENT_FRAMES } = await load('events/frames.js');
-  // WordCamp US has no edition yet. Its folder, theme, artwork and fonts stay registered
-  // and ready, but nothing is offered until event.js lists an edition.
-  const offered = regions.filter(region => region !== 'us');
-  assert.deepEqual(EVENTS.map(event => event.id), offered.map(region => `${region}-2027`));
+  assert.deepEqual(EVENTS.map(event => event.id), regions.map(region => `${region}-2027`));
   assert.ok(Object.isFrozen(EVENTS));
-  for (const registry of [EVENT_THEMES, EVENT_LAYOUTS, EVENT_ARTWORK]) {
-    assert.ok(Object.isFrozen(registry));
-    assert.deepEqual(Object.keys(registry), regions.map(region => `${region}-2027`));
-  }
-  assert.equal(Object.hasOwn(EVENT_FRAMES, 'us-2027'), false, 'no frames without an edition');
+  assert.deepEqual(Object.keys(themes), ['EVENT_THEMES']);
+  assert.ok(Object.isFrozen(EVENT_THEMES)); assert.ok(Object.isFrozen(EVENT_ARTWORK));
+  assert.deepEqual(Object.keys(EVENT_THEMES), regions.map(region => `${region}-2027`));
+  assert.deepEqual(Object.keys(EVENT_ARTWORK), drawn.map(region => `${region}-2027`));
+  assert.deepEqual((await readdir(new URL('events/', root))).filter(name => name.startsWith('wordcamp-')).sort(), regions.map(region => `wordcamp-${region}`).sort(), 'no event folder without an edition');
   for (const region of regions) {
     const dir = `events/wordcamp-${region}/`;
     const { editions } = await load(dir + 'event.js');
-    const { theme, layout } = await load(dir + 'theme.js');
-    const artwork = await load(dir + 'artwork.js');
+    const module = await load(dir + 'theme.js');
+    const { theme } = module;
+    assert.deepEqual(Object.keys(module), ['theme']);
     assert.ok(Object.isFrozen(editions));
     assert.deepEqual(Object.keys(theme), ['colors', 'styleNote']);
     assert.ok(Object.isFrozen(theme));
     assert.ok(Object.isFrozen(theme.colors));
-    assert.ok(Object.isFrozen(layout));
     assert.equal(EVENT_THEMES[`${region}-2027`], theme);
-    assert.equal(EVENT_LAYOUTS[`${region}-2027`], layout);
-    for (const name of ['frameDecoration', 'announcementDecoration', 'announcementHeading']) {
-      assert.equal(typeof artwork[name], 'function');
-      assert.equal(EVENT_ARTWORK[`${region}-2027`][name], artwork[name]);
-    }
-    if (!offered.includes(region)) {
-      assert.deepEqual([...editions], [], `${region}: no edition is offered`);
-      assert.ok(!(await readdir(new URL(dir, root))).includes('frames'), `${region}: no frames without an edition`);
-      continue;
+    const files = await readdir(new URL(dir, root));
+    // A drawn design exists exactly where something is drawn from it.
+    assert.equal(files.includes('artwork.js'), drawn.includes(region), `${region}: artwork.js`);
+    if (drawn.includes(region)) {
+      const artwork = await load(dir + 'artwork.js');
+      assert.deepEqual(Object.keys(artwork).sort(), ['announcementDecoration', 'announcementHeading', 'frameDecoration']);
+      for (const name of Object.keys(artwork)) {
+        assert.equal(typeof artwork[name], 'function');
+        assert.equal(EVENT_ARTWORK[`${region}-2027`][name], artwork[name]);
+      }
     }
     assert.equal(editions.length, 1);
     const edition = editions[0];
     assert.ok(Object.isFrozen(edition));
     assert.equal(edition.id, `${region}-2027`);
-    // Editions with avatar-frame artwork also list the roles it covers.
-    const frameRoles = Object.hasOwn(EVENT_FRAMES, edition.id) ? { frameRoles: Object.keys(EVENT_FRAMES[edition.id].roles) } : {};
-    assert.deepEqual(EVENTS.find(event => event.id === edition.id), { ...edition, ...theme, ...frameRoles });
-    assert.ok(!(await readdir(new URL(dir, root))).some(name => /^20\d{2}$/.test(name)), 'editions are data, not year directories');
+    // Editions with avatar-frame artwork also list the roles it covers, and say when
+    // that artwork has the bands a social card is made from.
+    const roles = EVENT_FRAMES[edition.id].roles;
+    const banded = Object.values(roles).every(role => role.band);
+    assert.equal(banded, !drawn.includes(region), `${region}: a social card is drawn or made from frames, never both`);
+    assert.deepEqual(EVENTS.find(event => event.id === edition.id), { ...edition, ...theme, frameRoles: Object.keys(roles), ...(banded ? { frameCard: true } : {}) });
+    assert.equal(Object.hasOwn(edition, 'frameCard'), false, 'frameCard follows the artwork; it is not set by hand');
+    assert.ok(!files.some(name => /^20\d{2}$/.test(name)), 'editions are data, not year directories');
   }
 });
 
@@ -96,7 +101,6 @@ test('shared geometry has no event-specific styling branches or embedded artwork
   const code = await source('events/social.js');
   // The existing default edition is an API invariant, not a styling branch.
   const withoutDefault = code.replace("options.event ?? 'asia-2027'", 'options.event');
-  assert.doesNotMatch(withoutDefault, /(?:asia|europe|india|us)-20\d{2}|botanical|template-blue|#3DD68C|#FCC626/);
+  assert.doesNotMatch(withoutDefault, /(?:asia|europe|india|us)-20\d{2}|botanical|#3DD68C|#FCC626/);
   assert.match(code, /EVENT_ARTWORK\[event\.id\]/);
-  assert.match(code, /EVENT_LAYOUTS\[event\.id\]/);
 });

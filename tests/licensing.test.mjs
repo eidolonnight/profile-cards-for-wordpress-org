@@ -38,7 +38,7 @@ test('all installed locked production dependencies retain their original license
 
 test('all bundled font-family copyright and OFL terms are preserved in public notices', async () => {
   const publicNotices = await readFile(new URL('public/FONT-LICENSES.txt', root));
-  assert.equal(createHash('sha256').update(publicNotices).digest('hex'), '2b649e87c065b713d07c0fcd0f643382e8035b71d2ef2d023677863244a58250');
+  assert.equal(createHash('sha256').update(publicNotices).digest('hex'), '944b2616c61725fbb4da8cb04a8b9203e318d7e6952e18cd5af0aafe8e0a91f7');
   const notices = normalized(publicNotices.toString('utf8'));
   const hashes = {
     'EBGaramond-OFL.txt': '0985066662eb755ed3683ae5482a81a9195b49ce3f7e165cc2388b3dbece7dd7',
@@ -46,14 +46,12 @@ test('all bundled font-family copyright and OFL terms are preserved in public no
     'facultyglyphic-OFL.txt': '5a6185c9e0232792afbef890406b569471ceda95e59d1999b602a8047d54be64',
     'kumbhsans-OFL.txt': 'b7057fc68425720a92830bbd18b39f070d784a4551de7b0b7e1ad3cc6747d3fc',
     'cardo-OFL.txt': '8e28b778b6e1a7ff9ca72f4dee2d53120aa2856dc1bfd0be44307e365b0e45bb',
-    'OpenSans-OFL.txt': 'fbbbcfef55318de350562559b671360de6d597112ecc5c73881b05092db89602',
   };
   const directories = {
     'assets/fonts/': ['EBGaramond-OFL.txt', 'Inter-OFL.txt'],
     'events/wordcamp-asia/fonts/': ['facultyglyphic-OFL.txt', 'kumbhsans-OFL.txt'],
     'events/wordcamp-europe/fonts/': ['cardo-OFL.txt', 'Inter-OFL.txt'],
     'events/wordcamp-india/fonts/': ['cardo-OFL.txt', 'Inter-OFL.txt'],
-    'events/wordcamp-us/fonts/': ['OpenSans-OFL.txt'],
   };
   for (const [directory, expected] of Object.entries(directories)) {
     const licenses = (await readdir(new URL(directory, root))).filter(name => /OFL\.txt$/i.test(name));

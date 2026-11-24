@@ -8,9 +8,11 @@ const revision = 'a'.repeat(64);
 test('browser module aliases cover event sources and preserve existing entry URLs', () => {
   assert.equal(new Set(BROWSER_MODULES.map(([from]) => from)).size, BROWSER_MODULES.length);
   assert.equal(new Set(BROWSER_MODULES.map(([, to]) => to)).size, BROWSER_MODULES.length);
-  for (const event of ['asia', 'europe', 'india', 'us']) {
-    for (const file of ['event.js', 'theme.js', 'artwork.js']) assert.ok(EVENT_MODULES.includes(`events/wordcamp-${event}/${file}`));
-  }
+  // Every edition has an event record and a theme. Only a drawn social card has artwork.js.
+  assert.deepEqual(EVENT_MODULES.filter(path => path.startsWith('events/wordcamp-')).sort(), [
+    ...['asia', 'europe', 'india'].flatMap(event => ['event.js', 'theme.js'].map(file => `events/wordcamp-${event}/${file}`)),
+    ...['europe', 'india'].map(event => `events/wordcamp-${event}/artwork.js`),
+  ].sort());
   for (const name of ['preview', 'options', 'svg', 'social', 'fonts', 'events', 'event-themes', 'event-fonts']) assert.ok(BROWSER_MODULES.some(([from, to]) => from === `shared/${name}.js` && to === `preview/${name}.js`));
   assert.ok(BROWSER_MODULES.every(([path]) => path.endsWith('.js') && !path.includes('/fonts/')));
 });

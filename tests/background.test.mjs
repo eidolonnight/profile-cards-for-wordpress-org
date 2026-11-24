@@ -154,7 +154,8 @@ for (const layout of ['classic', 'profile', 'square', 'announcement']) {
   test(`${layout}: trusted SVG compositing retains content and encodes only a freshly cropped raster`, async t => {
     const canvases = browser(t);
     const bg = await loadBackground(file(png()));
-    const source = layout === 'announcement' ? renderSocial(profile, { layout, avatar: false }) : renderCard(profile, { layout });
+    // A drawn social card takes a background; one derived from frame artwork never gets one.
+    const source = layout === 'announcement' ? renderSocial(profile, { layout, event: 'europe-2027', avatar: false }) : renderCard(profile, { layout });
     const svg = applyBackground(source, bg, { x: 100, y: 0, zoom: 2, tint: '#123ABC', tintOpacity: .4 });
     const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
     const image = doc.querySelector('image[data-local-background]'); assert.ok(image);
@@ -267,6 +268,9 @@ test('malformed SVG and absent background geometry fail without crop allocation'
   const canvases = browser(t); const bg = await loadBackground(file(png()));
   // Avatar-frame artwork is opaque outside the photo; the builder never composites behind it.
   const frames = ['asia-2027', 'europe-2027'].flatMap(event => ['circle', 'square'].map(shape => renderSocial(profile, { layout: 'avatar', event, shape }, null, eventFrameData(event, 'attendee'))));
+  // A social card made from frame artwork is finished artwork too.
+  frames.push(renderSocial(profile, { layout: 'announcement', event: 'asia-2027' }, null, eventFrameData('asia-2027', 'attendee'), eventFrameData('asia-2027', 'attendee', true)));
+  assert.match(frames.at(-1), /data-layout="announcement".*<rect width="1080" height="1350".*<image data-field="band"/s);
   for (const svg of ['<not-svg/>', '<svg/>', '<svg data-layout="avatar"><rect width="10" height="10"/></svg>', ...frames]) assert.throws(() => applyBackground(svg, bg));
   assert.equal(canvases.length, 1); bg.dispose();
 });

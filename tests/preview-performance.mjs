@@ -46,6 +46,9 @@ try {
   });
   await page.locator('#username').fill('eidolonnight');
   await page.locator('#create-button').click(); await ready();
+  // The default WordCamp Asia social card is frame artwork without color controls; open
+  // the disclosure on a format that has them, so it stays open for the palette switches.
+  await page.locator('#layout').selectOption('profile'); await ready();
   const colors = page.locator('#customize-colors');
   if (!await colors.evaluate(el => el.open)) await colors.locator(':scope > summary').click();
   // Also time inside the browser, excluding Playwright scrolling/actionability
@@ -53,7 +56,7 @@ try {
   await page.evaluate(() => {
     const image = document.getElementById('card-preview');
     const start = event => {
-      if ((event.type === 'click' && event.target.closest('#preset-light, #preset-dark')) || (event.type === 'change' && ['avatar', 'shape', 'role'].includes(event.target.id))) {
+      if ((event.type === 'click' && event.target.closest('#preset-light, #preset-dark')) || (event.type === 'change' && ['avatar', 'role', 'shape-circle', 'shape-square'].includes(event.target.id))) {
         window.__previewMeasurement = { start: performance.now() };
       }
     };
@@ -71,18 +74,22 @@ try {
   // edition's organizer artwork and one of the interim frames. Each switches to a role not
   // yet shown on this page and back, then shape. Selecting the edition preloads every
   // role's artwork, so once the page is idle a first role switch fetches nothing.
-  for (const [layout, event] of [['profile'], ['square'], ['avatar', 'asia-2027'], ['avatar', 'europe-2027'], ['announcement']]) {
+  // The social card is measured twice as well: WordCamp Asia's is its frame artwork (a role
+  // switch), another edition's is drawn (a palette switch).
+  for (const [layout, event] of [['profile'], ['square'], ['avatar', 'asia-2027'], ['avatar', 'europe-2027'], ['announcement', 'asia-2027'], ['announcement', 'europe-2027']]) {
     if (await page.locator('#layout').inputValue() !== layout) { await page.locator('#layout').selectOption(layout); await ready(); }
     if (event && await page.locator('#event').inputValue() !== event) { await page.locator('#event').selectOption(event); await ready(); }
-    const role = layout === 'avatar' ? await page.locator('#role').inputValue() : null;
-    if (layout === 'avatar') await page.waitForLoadState('networkidle');
-    const actions = layout === 'avatar' ? ['role:' + (role === 'speaker' ? 'volunteer' : 'speaker'), 'role:' + role, 'square', 'circle'] : [...(await page.locator('#preset-dark').isVisible() ? ['dark', 'light'] : []), ...(await page.locator('#avatar').isEnabled() ? ['hide-avatar', 'show-avatar'] : [])];
+    const artwork = layout === 'avatar' || (layout === 'announcement' && event === 'asia-2027');
+    const role = artwork ? await page.locator('#role').inputValue() : null;
+    if (artwork) await page.waitForLoadState('networkidle');
+    const roles = ['role:' + (role === 'speaker' ? 'volunteer' : 'speaker'), 'role:' + role];
+    const actions = layout === 'avatar' ? [...roles, 'square', 'circle'] : artwork ? roles : [...(await page.locator('#preset-dark').isVisible() ? ['dark', 'light'] : []), ...(await page.locator('#avatar').isEnabled() ? ['hide-avatar', 'show-avatar'] : [])];
     for (const action of actions) {
       const previous = await page.locator('#card-preview').getAttribute('src');
       await page.evaluate(() => performance.clearResourceTimings());
       const started = performance.now();
       if (action.startsWith('role:')) await page.locator('#role').selectOption(action.slice(5));
-      else if (layout === 'avatar') await page.locator('#shape').selectOption(action);
+      else if (layout === 'avatar') await page.locator('#shape-' + action).check();
       else if (action.endsWith('avatar')) await page.locator('#avatar').setChecked(action === 'show-avatar');
       else await page.locator('#preset-' + action).click();
       await ready();
@@ -99,7 +106,7 @@ try {
       console.log(JSON.stringify({ layout, ...(event ? { event } : {}), action, elapsedMs: Math.round(elapsedMs), interactionMs: Math.round(interactionMs), requests: resources.length }));
     }
   }
-  assert.equal(report.samples.length, 18);
+  assert.equal(report.samples.length, 20);
   assert.deepEqual(report.errors, []);
   const sorted = report.samples.map(item => item.elapsedMs).sort((a, b) => a - b);
   const native = report.samples.map(item => item.interactionMs).sort((a, b) => a - b);

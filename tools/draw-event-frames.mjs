@@ -16,7 +16,6 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { EVENTS, ROLES } from '../events/catalog.js';
 import { EVENT_FONT_CSS, EVENT_FONTS, eventInkCenter } from '../events/fonts.js';
-import { EVENT_LAYOUTS } from '../events/themes.js';
 import { EVENT_ARTWORK } from '../events/artwork.js';
 import { fitEventText, eventTextAttributes } from '../events/social.js';
 import { DEFAULT_COLORS } from '../shared/options.js';
@@ -44,10 +43,11 @@ export function drawFrame(eventId, roleId) {
   const event = EVENTS.find(item => item.id === eventId);
   const role = ROLES.find(item => item.id === roleId);
   if (!event || !role) throw new Error(`Unknown edition or role: ${eventId} ${roleId}`);
+  if (!Object.hasOwn(EVENT_ARTWORK, event.id)) throw new Error(`${eventId} has no drawn design in events/artwork.js to draw frames from.`);
   const o = { ...DEFAULT_COLORS, ...event.colors };
   const fonts = EVENT_FONTS[event.id];
   const eventText = fitEventText(event.label.toUpperCase(), 1100, 56, 48, fonts.display);
-  const roleText = fitEventText(role.statement.toUpperCase(), 900, 54, 48, fonts[EVENT_LAYOUTS[event.id].curvedRoleFace ?? 'emphasis']);
+  const roleText = fitEventText(role.statement.toUpperCase(), 900, 54, 48, fonts.emphasis);
   const { cx, cy, r } = FRAME_WINDOW;
   const out = [];
   // Opaque ground to every edge, with the photo window cut out.
@@ -55,7 +55,6 @@ export function drawFrame(eventId, roleId) {
   // Decoration and lettering stay inside the ring, clear of the photo.
   out.push(`<defs><clipPath id="frame-ring"><path clip-rule="evenodd" d="M ${540 - RING_EDGE} 540 A ${RING_EDGE} ${RING_EDGE} 0 1 0 ${540 + RING_EDGE} 540 A ${RING_EDGE} ${RING_EDGE} 0 1 0 ${540 - RING_EDGE} 540 Z M ${cx - r} ${cy} A ${r} ${r} 0 1 0 ${cx + r} ${cy} A ${r} ${r} 0 1 0 ${cx - r} ${cy} Z"/></clipPath>${arc('event-arc', baseline(eventText, true), true)}${arc('role-arc', baseline(roleText, false), false)}</defs>`);
   out.push('<g clip-path="url(#frame-ring)">');
-  out.push(`<circle cx="540" cy="540" r="${RING_EDGE - 2}" fill="none" stroke="#${o.headerColor}" stroke-opacity="0.28" stroke-width="2"/>`);
   out.push(`<g data-decoration="frame">${EVENT_ARTWORK[event.id].frameDecoration(o)}</g>`);
   out.push(`<g data-field="event">${curved(eventText, 'event-arc', o.headerColor, 1100)}</g>`);
   out.push(`<g data-field="role">${curved(roleText, 'role-arc', o.headerColor, 900)}</g>`);

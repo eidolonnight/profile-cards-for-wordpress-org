@@ -28,9 +28,12 @@ try {
   assert.deepEqual(traffic.filter(item => item.origin !== new URL(base).origin), []);
   assert.equal(traffic.filter(item => item.path === '/matt-demo-avatar.jpg').length, 1);
   report.checks.push('every bundled-demo layout reuses one cached local portrait without profile, card, WordPress.org or live Gravatar requests');
-  const demoWaiting = page.waitForEvent('download'); await page.locator('#download-svg').click(); const demoDownload = await demoWaiting;
-  await demoDownload.saveAs(evidence + '/bundled-demo.svg');
-  assert.match(await readFile(evidence + '/bundled-demo.svg', 'utf8'), /data:image\/jpeg;base64,/);
+  // PNG is the only download; the displayed image carries the bundled portrait.
+  assert.equal(await page.locator('#download-svg').count(), 0);
+  const demoWaiting = page.waitForEvent('download'); await page.locator('#download-png').click(); const demoDownload = await demoWaiting;
+  await demoDownload.saveAs(evidence + '/bundled-demo.png');
+  assert.ok((await readFile(evidence + '/bundled-demo.png')).subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])));
+  assert.match(await page.locator('#card-preview').evaluate(async image => (await fetch(image.src)).text()), /data:image\/jpeg;base64,/);
   assert.match(await page.locator('#cache-note').innerText(), /Bundled profile snapshot from 2026-11-03; no WordPress\.org request was made/);
   report.checks.push('bundled/not-live disclosure remains visible after demo downloads and other transient status changes');
   await page.locator('#username').fill('matt'); await page.locator('#create-button').click();
@@ -44,6 +47,11 @@ try {
   assert.match(download.suggestedFilename(), /^matt-.*-announcement\.png$/);
   await download.saveAs(evidence + '/demo.png'); const png = await readFile(evidence + '/demo.png');
   await assertDownloadedPNG(page, png); report.checks.push('actual downloaded PNG signature, dimensions and decoded pixels match the preview');
+  // The WordCamp Asia social card is frame artwork without color controls; an edition
+  // whose card is drawn has them.
+  assert.equal(await page.locator('#customize-colors').isVisible(), false);
+  await page.locator('#event').selectOption('europe-2027');
+  await page.waitForFunction(() => !document.getElementById('exports').disabled && document.getElementById('card-preview').complete && document.getElementById('card-preview').naturalWidth > 0, null, { timeout: 45000 });
   for (const width of [1440, 320]) {
     await page.setViewportSize({ width, height: 1000 });
     if (!await page.locator('#customize-colors').evaluate(el => el.open)) await page.locator('#customize-colors summary').click();
@@ -80,8 +88,7 @@ try {
     assert.deepEqual(portraitTraffic.filter(url => ['/json', '/preview-data', '/card'].includes(url.pathname)), []);
     assert.deepEqual(portraitTraffic.filter(url => url.origin !== new URL(base).origin), []);
     if (verifyInitials) {
-      const waiting = fallback.waitForEvent('download'); await fallback.locator('#download-svg').click(); const download = await waiting;
-      const output = `${evidence}/${name}.svg`; await download.saveAs(output); const svg = await readFile(output, 'utf8');
+      const svg = await fallback.locator('#card-preview').evaluate(async image => (await fetch(image.src)).text());
       assert.doesNotMatch(svg, /data:image\/jpeg;base64,/); assert.match(svg, />MM<|>M<\/text>\s*<text[^>]*>M</);
     }
     await fallback.close();

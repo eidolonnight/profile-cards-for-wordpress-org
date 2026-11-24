@@ -7,18 +7,17 @@ Read [AGENTS.md](../AGENTS.md) first. This guide is for agents and contributors 
 - [WordCamp Asia](wordcamp-asia/)
 - [WordCamp Europe](wordcamp-europe/)
 - [WordCamp India](wordcamp-india/)
-- [WordCamp US](wordcamp-us/): no edition offered yet
 
 Keep every edition of an event in its existing folder, not a new year directory.
 
 | Event-local file | What to change |
 | --- | --- |
 | `event.js` | Edition records: immutable IDs, years, official links, dates, locations, notes and factual check dates |
-| `theme.js` | Default colors, style/source explanation and layout preferences |
-| `artwork.js` | Original SVG decorations and event-specific heading composition |
+| `theme.js` | Default colors and style/source explanation |
+| `artwork.js` | Original SVG decorations and event-specific heading composition, for a social card drawn here and for interim frames. An event whose social card is made from its frames has none |
 | `fonts/manifest.json` | Pinned binary provenance and the display/body/emphasis selections for each edition |
-| `fonts/` | Font binaries, original source TTFs where applicable, and original OFL licenses |
-| `frames/manifest.json`, `frames/*.png` | Avatar-frame PNGs, one per role, with their source, rights and photo window: the event designers' artwork, or the project's interim frames until that arrives |
+| `fonts/` | Font binaries and original OFL licenses |
+| `frames/manifest.json`, `frames/*.png` | Avatar-frame PNGs, one per role, with their source, rights and photo window: the event designers' artwork, or the project's interim frames until that arrives. Also each frame's band, where the [social card is made from the frames](#social-cards-from-frames) |
 
 Social cards are generated SVG. Avatar frames are the profile photo under PNG artwork. Adding an image file does not embed or serve it: frames enter the renderer only through their manifest, the frame generator and the explicit runtime allowlist. Preserve export portability and image licensing. Visitor-selected background images remain browser-only and never become repository assets.
 
@@ -31,7 +30,7 @@ Give the agent the event folder, official edition website, approved brand guidel
 For an existing edition:
 
 1. Verify the sources below before changing facts or style. A file reorganization is not a reason to refresh facts or check dates.
-2. Edit the event's `theme.js` for colors/layout choices, `artwork.js` for decoration and headings, or the relevant record in `event.js` for confirmed details. Keep `name` and `label` year-free. Do not retarget an existing edition ID to a different year.
+2. Edit the event's `theme.js` for colors, `artwork.js` for decoration and headings, or the relevant record in `event.js` for confirmed details. Keep `name` and `label` year-free. Do not retarget an existing edition ID to a different year.
 3. If fonts change, update that event's `fonts/manifest.json`, licensed inputs and notes, then regenerate the shared font output. Do not hand-edit generated CSS, metrics or CSP hashes.
 4. Verify both layouts, all roles, both avatar-frame shapes, photo and initials states, long labels, manual colors and optional details. Redraw [interim frames](#interim-frames) when a label, font or frame decoration changes. Check other events for regressions, especially when changing shared code.
 5. Include the diff, source links, previews and actual verification results in the handoff. Opening a PR, pushing or deploying requires the appropriate approval.
@@ -42,15 +41,15 @@ Use the current official edition site, not a prior-year design or search snippet
 
 Confirm dates and locations from announcement prose. Unknown fields stay `''`; preserve the precision actually announced. Never promote a placeholder January 1, guessed city or calendar artifact into a confirmed date. Explain conflicting or provisional information in `note`/`styleNote`. Factual `checkedAt` and font/style check dates are separate and must not imply unrelated records were rechecked.
 
-The existing factual checks are historical (2026-10-01); style/font observations are dated 2026-10-03. WordCamp US has no edition yet, so the builder does not offer it; its provisional coming-soon styling stays in its folder for when planning starts. Europe and India adapt announcement pages, not final campaign identities. See [font observations](FONTS.md) and the event-local notes. Revisit official sites only when a refresh is in scope.
+The existing factual checks are historical (2026-10-01); style/font observations are dated 2026-10-03. Europe and India adapt announcement pages, not final campaign identities. See [font observations](FONTS.md) and the event-local notes. Revisit official sites only when a refresh is in scope.
 
-The catalog preserves `id`, `name`, `year`, `label`, `dateLabel`, `location`, `url`, `note`, `checkedAt`, `colors` and `styleNote`. An edition with avatar frames also lists `frameRoles`, the role IDs its artwork covers. Do not add embedded fonts, metrics, images or rendering functions to the public catalog. Its colors are exactly `foreground`, `headerColor`, `nameColor`, `subHeaderColor`, and `badgeLabelColor`, each uppercase six-digit hex without `#`.
+The catalog preserves `id`, `name`, `year`, `label`, `dateLabel`, `location`, `url`, `note`, `checkedAt`, `colors` and `styleNote`. An edition with avatar frames also lists `frameRoles`, the role IDs its artwork covers, and `frameCard: true` when those frames have bands, so its social card is made from them. Do not add embedded fonts, metrics, images or rendering functions to the public catalog. Its colors are exactly `foreground`, `headerColor`, `nameColor`, `subHeaderColor`, and `badgeLabelColor`, each uppercase six-digit hex without `#`.
 
 The browser validator allows at most 30 unique events and 10 roles. Event IDs match `^[a-z]+-20\d{2}$`; the year, ID and official URL must agree. Use real calendar dates for `checkedAt` even though the validator checks shape. Official URLs are HTTPS on exactly `asia.wordcamp.org`, `europe.wordcamp.org`, `india.wordcamp.org` or `us.wordcamp.org`, with a `/20YY/` path and no credentials, explicit port, query or fragment. A different region/URL shape needs a separately reviewed validator change, not a silent allowlist expansion.
 
 ## Adding an edition
 
-Add the new record to the event's `event.js` and its face selections to `fonts/manifest.json`; keep older IDs working. Avatar frames are per edition: a new edition has none, and no avatar-frame format, until its own files are listed in `frames/manifest.json`. Draw [interim frames](#interim-frames) if the organizers have not supplied theirs. Keep the same event folder. Register its ID explicitly in `themes.js` (`EVENT_THEMES` and `EVENT_LAYOUTS`) and `artwork.js` (`EVENT_ARTWORK`). These registries do not infer new IDs. Reusing the event-local theme/artwork makes those editions share a design; preserving an older edition's treatment requires deliberate edition-specific configuration rather than silently restyling it.
+Add the new record to the event's `event.js` and its face selections to `fonts/manifest.json`; keep older IDs working. Avatar frames are per edition: a new edition has none, and no avatar-frame format, until its own files are listed in `frames/manifest.json`. Draw [interim frames](#interim-frames) if the organizers have not supplied theirs. Keep the same event folder. Register its ID explicitly in `themes.js` (`EVENT_THEMES`) and, when its social card or interim frames are drawn here, in `artwork.js` (`EVENT_ARTWORK`). These registries do not infer new IDs. Reusing the event-local theme/artwork makes those editions share a design; preserving an older edition's treatment requires deliberate edition-specific configuration rather than silently restyling it.
 
 Check catalog order and defaults in `shared/options.js` and `events/social.js`. Adding an edition does not authorize a new default. The selector displays year-free labels, so coexisting editions with duplicate labels need an explicit UX decision. Keep unknown IDs/roles failing closed. Search tests for fixed IDs/counts, extend both offline browser matrices and independent font identity expectations, and regenerate fonts. A genuinely new event needs a new year-free directory, registry entries and explicit browser/staging allowlist entries.
 
@@ -120,16 +119,31 @@ An edition without a `frames/` folder has no avatar frame: the builder cannot ma
 - The profile photo is always included. The builder has no photo checkbox for this format, and a shared link with `avatar=false` is rejected.
 - `shape=circle`, the default, crops photo and artwork together to the circle that touches all four edges, leaving the corners transparent. `shape=square` keeps the whole artwork. The builder offers both under **Shape**. One PNG per role serves both.
 - Only roles with artwork are offered. A shared link naming any other role is rejected, and artwork that is missing or does not match the registry stops the image with a clear message. Another edition's or role's artwork is never substituted, and nothing is drawn in its place.
-- Colors and local backgrounds do not apply. The builder hides those controls, sends no color parameters and skips background compositing. The same edition's social card stays drawn and keeps every role, color and background option.
+- Colors and local backgrounds do not apply. The builder hides those controls, sends no color parameters and skips background compositing. The same edition's social card stays drawn and keeps every role, color and background option, unless it is made from the frames (next section).
 - No frame bytes are in JavaScript or in the Functions bundle. A frame costs its PNG size in the repository and the published site, nothing more.
+
+### Social cards from frames
+
+An edition can use its square frames for the 4:5 social card too, instead of a card the project draws. WordCamp Asia 2027 does.
+
+- The card is 1080 × 1350. The frame, with the photo under it, fills the lower 1080 × 1080. Above it is the frame's band: 270 units of the frame's own background, continued to the top of the card. The band carries the name and, if chosen, the username.
+- A band is one PNG per role, `<edition>-<role>-band.png`, derived from that role's frame. A frame's background is a flat color or a pattern that repeats on a square grid, so the frame itself says what belongs above its top edge. Nothing is drawn by hand.
+- Make them with `node tools/build-event-frames.mjs --bands asia-2027 "$EVIDENCE/bands"`. Optimize the PNGs losslessly as for frames, copy them into `frames/`, list them under `editions.<id>.bands` (role ID to file name, the same roles as `roles`) and in `assets[]` with the frame's file name as `sourceName`, then run the generator. It derives each band again and fails unless the file matches pixel for pixel, so a band always follows its frame. Replace a frame and its band must be made again.
+- A band needs the top 16 px of its frame to hold background only, and a background that is flat or repeats regularly. The tool says so when a frame has neither; that edition keeps a drawn social card.
+- The edition's social card is made from frames exactly when every role has a band. There is no other switch. `frameCard: true` then appears on the edition in the catalog.
+- A band is as wide as its frame and 8 px taller than the 270 units it shows. Those last rows repeat the frame's top rows and sit under the frame, so the two images meet without a seam at any size. The frame's ground color lies under everything, so the card stays opaque behind a photo that is not.
+- The name and username are set in the edition's body face, centered, like the artwork's own lines of text. They use the edition's `nameColor` or `foreground`, whichever reads on the frame's ground: the most common color along the artwork's top edge, recorded per role as `ground` in `events/frames.js`.
+- The artwork already states the role, event, dates and place, so the card draws none of them.
+- Bands are published beside the frames, at `/frames/<edition>-<role>-band.png`, and loaded, checked and preloaded the same way. WordCamp Asia 2027's six come to about 160 KB.
+- Everything in [How avatar frames behave](#how-avatar-frames-behave) applies except shape: builder-only, PNG download, only roles with artwork, no colors, no local background, no substitute design, and `/card` rejects the edition's `layout=announcement`.
 
 ## Fonts and original licenses
 
-Every event's `fonts/manifest.json` has `assets` (the original source URL, hash, byte size, family, weights and any conversion/reuse notes) and `editions` (edition IDs mapped to display/body/emphasis face keys). `path` and `sourcePath` are relative to that event's `fonts/` folder. Preserve complete original notices and update `public/FONT-LICENSES.txt` when a new family is introduced; the generator does not generate public notices. Font software remains OFL-1.1, not the project's GPL.
+Every event's `fonts/manifest.json` has `assets` (the original source URL, hash, byte size, family, weights and any reuse notes) and `editions` (edition IDs mapped to display/body/emphasis face keys). `path` is relative to that event's `fonts/` folder. Preserve complete original notices and update `public/FONT-LICENSES.txt` when a new family is introduced; the generator does not generate public notices. Font software remains OFL-1.1, not the project's GPL.
 
 Europe and India each carry a byte-identical copy of the existing WordPress.org Inter Latin input, so their organizer folders are self-contained. It matches the observed family/weights but is not the larger event-theme binary. Base profile fonts remain in `assets/fonts/`; modifying an event copy does not authorize changing base typography. Shared identical font definitions are deduplicated by the generator; conflicting definitions must not overwrite one another silently.
 
-Open Sans retains pinned original TTFs and losslessly compressed WOFF2 copies. Preserve `sourcePath`, `sourceSha256` and `conversion`. Internal names/outlines are not renamed or subsetted; `Event ...` is only a CSS alias. The generator validates input hashes and conversion bytes rather than fetching missing inputs.
+Internal names/outlines are not renamed or subsetted; `Event ...` is only a CSS alias. The generator validates input hashes rather than fetching missing inputs.
 
 Use an existing compatible Python environment with fontTools 4.57.0 and Brotli support. If needed, create one outside the checkout:
 
@@ -143,12 +157,11 @@ Run from the project root, with an external writable `EVIDENCE` directory. Insta
 
 | Edition | Display | Body | Emphasis |
 | --- | --- | --- | --- |
-| `asia-2027` | Faculty Glyphic 400 | Kumbh Sans 400 | Kumbh Sans 500 |
+| `asia-2027` | Faculty Glyphic 400 | Kumbh Sans 400 | Kumbh Sans 400 |
 | `europe-2027` | Cardo 400 | Inter 400 | Inter 600 |
 | `india-2027` | Cardo 700 | Inter 400 | Inter 600 |
-| `us-2027` (not offered yet) | Open Sans 300 | Open Sans 400 | Open Sans 600 |
 
-Display faces cover headings, curved event labels, names and permitted fallback initials; body faces cover handles and available metadata; emphasis faces cover role statements. Asia's curved role uses its display face. Verify every text role's actual painted family and weight, not only its declaration or `data-face` attribute.
+Display faces cover headings, curved event labels, names and permitted fallback initials; body faces cover handles and available metadata; emphasis faces cover role statements. On a social card made from frames the name is set in the body face, like the artwork's own text. Verify every text role's actual painted family and weight, not only its declaration or `data-face` attribute.
 
 Fitting uses pinned advances and glyph ink bounds with bounded shrinking/truncation. SVG text disables synthetic weights, kerning and ligatures to match those metrics. Unsupported scripts use conservative fallback widths, not a full shaping engine. In the interim frames that `tools/draw-event-frames.mjs` draws, ink is centered at radius 463 inside the 400–526 annulus; top/bottom baselines use the fitted label's actual ink midpoint. Preserve the 1.25 px radial-centering tolerance, unclipped ink, the transparent photo window and the opaque ground to every edge. Social cards retain their separate 1080×1350 composition.
 

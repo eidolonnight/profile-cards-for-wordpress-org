@@ -6,7 +6,8 @@ import { parseHTML } from 'linkedom/worker';
 import { renderSocial } from '../shared/social.js';
 import { EVENTS, ROLES } from '../shared/events.js';
 import { EVENT_FRAMES } from '../events/frames.js';
-import { eventFrameData } from './frame-artwork.mjs';
+import { eventFrameData, artworkFor } from './frame-artwork.mjs';
+import { EVENT_ARTWORK } from '../events/artwork.js';
 import { drawFrame } from '../tools/draw-event-frames.mjs';
 // Avatar frames are PNG artwork that carries its own lettering. The measured vector
 // labels below belong to the project's interim frames, drawn offline by the tool.
@@ -30,7 +31,11 @@ const checkCentered = svg => {
 };
 
 test('all drawn interim frame labels center their visible uppercase cap bands', () => {
-  for (const event of EVENTS) for (const role of ROLES) {
+  // Only an edition with a drawn design has interim frames to draw.
+  const drawn = EVENTS.filter(event => Object.hasOwn(EVENT_ARTWORK, event.id));
+  assert.deepEqual(drawn.map(event => event.id), ['europe-2027', 'india-2027']);
+  assert.throws(() => drawFrame('asia-2027', 'attendee'), /asia-2027 has no drawn design/);
+  for (const event of drawn) for (const role of ROLES) {
     const d = checkCentered(drawFrame(event.id, role.id));
     assert.equal(d.querySelector('[data-field="event"]').textContent, event.label.toUpperCase());
     assert.equal(d.querySelector('[data-field="role"]').textContent, role.statement.toUpperCase());
@@ -64,12 +69,27 @@ test('all 1728 branded variants preserve photo geometry and privacy', () => {
   for (const layout of ['avatar', 'announcement']) for (const event of EVENTS) for (const role of ROLES) for (const palette of [{}, { foreground: '191E23', headerColor: 'FFFFFF', nameColor: 'EEEEEE', subHeaderColor: 'CCCCCC' }]) for (let mask = 0; mask < 16; mask++) for (const shape of layout === 'avatar' ? ['circle', 'square'] : [null]) {
     const flags = Object.fromEntries(['avatar', 'name', 'handle', 'eventDetails'].map((key, i) => [key, Boolean(mask & (1 << i))]));
     const artwork = layout === 'avatar';
-    const frame = artwork ? eventFrameData(event.id, role.id) : null;
-    const d = doc(renderSocial(profile, { layout, event: event.id, role: role.id, ...(shape ? { shape } : {}), ...palette, ...flags }, null, frame));
+    // A social card made from the edition's frame artwork keeps the frame's photo
+    // window, moved down with the frame below its band.
+    const derived = layout === 'announcement' && event.frameCard === true;
+    const pngs = artworkFor({ layout, event: event.id, role: role.id }); const [frame, band] = pngs;
+    assert.equal(frame, artwork || derived ? eventFrameData(event.id, role.id) : undefined);
+    assert.equal(band, derived ? eventFrameData(event.id, role.id, true) : undefined);
+    const d = doc(renderSocial(profile, { layout, event: event.id, role: role.id, ...(shape ? { shape } : {}), ...palette, ...flags }, null, ...pngs));
     const photo = d.querySelector('#social-photo circle');
     assert.equal(Boolean(photo), flags.avatar);
-    const area = artwork ? EVENT_FRAMES[event.id].photo : { cx: 540, cy: 660, r: 300 };
+    const area = artwork || derived ? EVENT_FRAMES[event.id].photo : { cx: 540, cy: 660, r: 300 };
     if (photo) for (const key of ['cx', 'cy', 'r']) assert.equal(photo.getAttribute(key), String(area[key]));
+    if (derived) {
+      const group = d.querySelector('image[data-field="frame"]').parentNode;
+      assert.equal(group.getAttribute('transform'), 'translate(0 270)');
+      if (photo) assert.equal(d.querySelector('[data-field="avatar"]').parentNode, group, 'photo and artwork move together');
+      assert.ok(area.cx - area.r > 0 && area.cy - area.r > 0 && area.cx + area.r < 1080 && area.cy + area.r < 1080);
+      assert.equal(d.querySelector('image[data-field="frame"]').getAttribute('href'), frame);
+      assert.equal(d.querySelector('image[data-field="band"]').getAttribute('href'), band);
+      assert.equal(Boolean(d.querySelector('[data-field="name"]')), flags.name); assert.equal(Boolean(d.querySelector('[data-field="handle"]')), flags.handle);
+      assert.equal(d.querySelector('[data-field="eventDetails"], [data-field="event"], [data-field="role"]'), null, 'the artwork states them');
+    }
     if (artwork) {
       // The photo circle must reach under the artwork on every side of the canvas.
       assert.ok(area.cx - area.r > 0 && area.cy - area.r > 0 && area.cx + area.r < 1080 && area.cy + area.r < 1080);

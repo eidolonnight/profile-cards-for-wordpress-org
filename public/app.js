@@ -12,9 +12,9 @@
   const isSocial = (layout = $('layout').value) => layout === 'avatar' || layout === 'announcement';
   const isModern = (layout = $('layout').value) => layout === 'profile' || layout === 'square';
   const visibilityKeys = (layout) => layout === 'avatar' ? ['avatar']
-    : layout === 'announcement' ? ['avatar', 'name', 'handle', 'eventDetails']
+    : layout === 'announcement' ? ['avatar', 'name', 'handle']
       : isModern(layout) ? toggles : ['avatar', 'badges', 'link'];
-  const profileFieldsHelp = $('public-fields-help').textContent;
+  const shape = () => $('shape-square').checked ? 'square' : 'circle';
   const palettes = {
     light: ['191E23', '191E23', '50575E', '23282D', 'FFFFFF'],
     dark: ['F6F7F7', 'F6F7F7', 'C3C4C7', 'F0F0F1', '191E23'],
@@ -108,14 +108,14 @@
     for (const key of visibilityKeys(layout)) {
       params.set(key, String($(key).checked));
     }
-    // Avatar frames are finished artwork: no colors apply.
-    const applicableColors = layout === 'avatar' ? []
+    // Avatar frames, and social cards derived from them, are finished artwork: no colors apply.
+    const applicableColors = usesArtwork(layout) ? []
       : layout === 'announcement' ? colors.filter(key => key !== 'badgeLabelColor') : colors;
     for (const key of applicableColors) params.set(key, $(key).value.slice(1).toUpperCase());
     if (isSocial(layout)) {
       params.set('event', $('event').value);
       params.set('role', $('role').value);
-      if (layout === 'avatar') params.set('shape', $('shape').value);
+      if (layout === 'avatar') params.set('shape', shape());
     } else if (isModern(layout)) {
       if (state.omitTeams.size) params.set('omitTeams', [...state.omitTeams].join(','));
     }
@@ -124,9 +124,13 @@
 
   // Avatar frames are PNG artwork, one published image per edition and role, composed
   // in this browser only. The catalog lists the roles each edition's artwork covers;
-  // colors and backgrounds don't apply.
+  // colors and backgrounds don't apply. An edition's social card can be derived from
+  // the same artwork (frameCard in the catalog), and then follows the same rules.
+  function usesArtwork(layout = $('layout').value, event = $('event').value) {
+    return layout === 'avatar' || (layout === 'announcement' && Boolean(state.catalog?.events.find(item => item.id === event)?.frameCard));
+  }
   function frameRoles(layout = $('layout').value) {
-    if (layout !== 'avatar') return null;
+    if (!usesArtwork(layout)) return null;
     return state.catalog?.events.find(item => item.id === $('event').value)?.frameRoles || null;
   }
 
@@ -142,7 +146,8 @@
   function syncControls() {
     const layout = $('layout').value;
     const profileLayout = isModern(layout), social = isSocial(layout), announcement = layout === 'announcement', frame = layout === 'avatar';
-    // The profile photo is part of every WordCamp graphic, not a choice.
+    // The profile photo is part of every WordCamp graphic and the name of every social
+    // card: they are not choices, so their controls are not shown.
     if (social) $('avatar').checked = true;
     if (announcement) $('name').checked = true;
     syncAutomaticColors();
@@ -151,16 +156,13 @@
     $('builder').dataset.layout = layout;
     $('display-settings').hidden = frame;
     $('profile-fields').hidden = !profileLayout && !announcement;
-    $('public-fields-help').hidden = !profileLayout && !announcement;
-    $('public-fields-help').textContent = announcement
-      ? 'Your avatar and name are required. Your username can be included or left off.' : profileFieldsHelp;
+    $('public-fields-help').hidden = !profileLayout;
+    $('avatar').closest('label').hidden = social;
     $('avatar').disabled = social;
-    $('avatar-label').textContent = announcement ? 'Avatar (required)' : 'Avatar';
-    $('name-label').textContent = announcement ? 'Name (required)' : 'Name';
     for (const key of profileToggles) {
-      const applicable = profileLayout || (announcement && ['name', 'handle'].includes(key));
+      const applicable = profileLayout || (announcement && key === 'handle');
       $(key).closest('label').hidden = !applicable;
-      $(key).disabled = !applicable || (announcement && key === 'name');
+      $(key).disabled = !applicable;
     }
     $('individual-details').hidden = !profileLayout || !state.profile;
 
@@ -180,12 +182,8 @@
     for (const option of $('role').options) option.hidden = option.disabled = Boolean(roles) && !roles.includes(option.value);
     if (roles && !roles.includes($('role').value)) $('role').value = roles[0];
     $('shape-setting').hidden = !frame;
-    $('shape').disabled = !frame;
-    $('frame-note').hidden = !frame;
-    $('customize-colors').hidden = frame;
-    // An avatar frame is a photo under PNG artwork: it downloads as a PNG only.
-    $('download-svg').hidden = frame;
-    $('eventDetails').closest('label').hidden = !announcement;
+    $('shape-setting').disabled = !frame;
+    $('customize-colors').hidden = usesArtwork(layout);
     $('badgeLabelColor').closest('label').hidden = social;
     $('badgeLabelColor').closest('label').querySelector('span').textContent = profileLayout ? 'Badge icons & teams' : 'Badge labels';
     $('headerColor').closest('label').querySelector('span').textContent = announcement ? 'Event text' : 'Header';
@@ -310,6 +308,7 @@
           && (event.styleNote === undefined || text(event.styleNote))
           && (event.frameRoles === undefined || (Array.isArray(event.frameRoles) && event.frameRoles.length > 0
             && new Set(event.frameRoles).size === event.frameRoles.length && event.frameRoles.every(id => roleIds.has(id))))
+          && (event.frameCard === undefined || (event.frameCard === true && event.frameRoles !== undefined))
           && (event.colors === undefined || (event.colors && typeof event.colors === 'object' && !Array.isArray(event.colors)
             && Object.keys(event.colors).length === colors.length
             && colors.every(key => Object.hasOwn(event.colors, key) && typeof event.colors[key] === 'string' && /^[0-9a-f]{6}$/i.test(event.colors[key]))))
@@ -510,14 +509,15 @@
 
   // One request per frame per page: the loader fetches the published PNG and checks it
   // against the registry. A failure stays explicit (no other design is substituted)
-  // and is not kept, so choosing that frame again tries once more.
-  function loadFrame(event, role, background = false) {
-    const key = `${event}/${role}`;
+  // and is not kept, so choosing that frame again tries once more. `band` is the
+  // frame's social-card band rather than the frame.
+  function loadFrame(event, role, band = false, background = false) {
+    const key = `${event}/${role}/${band}`;
     if (!state.frames.has(key)) {
       if (!state.frameLoader) state.frameLoader = import('/preview/events/frame-loader.js');
       // Background loads must not compete with the frame or profile being shown.
       const fetcher = background ? (url, init) => fetch(url, { ...init, priority: 'low' }) : undefined;
-      const frame = state.frameLoader.then(module => module.loadEventFrame(event, role, fetcher)).then(data => {
+      const frame = state.frameLoader.then(module => module.loadEventFrame(event, role, fetcher, band)).then(data => {
         if (typeof data !== 'string') throw new Error('Missing frame artwork.');
         return data;
       }).catch(() => {
@@ -529,24 +529,28 @@
     return state.frames.get(key);
   }
 
+  // The artwork a format is made from: the frame, and for a social card its band too.
+  const artwork = (event, role, layout, background) => Promise.all((layout === 'avatar' ? [false] : [false, true]).map(band => loadFrame(event, role, band, background)));
+
   function frameArtwork(params) {
-    const event = params.get('event'), role = params.get('role');
+    const event = params.get('event'), layout = params.get('layout');
     // Without artwork for the edition, the renderer reports that no frame is available.
-    if (params.get('layout') !== 'avatar' || !state.catalog?.events.find(item => item.id === event)?.frameRoles) return Promise.resolve(null);
-    return loadFrame(event, role);
+    if (!usesArtwork(layout, event) || !state.catalog?.events.find(item => item.id === event)?.frameRoles) return Promise.resolve([]);
+    return artwork(event, params.get('role'), layout);
   }
 
   // Switching "I'm…" must not wait on the network. The first time an edition is selected
-  // for an avatar frame, fetch the selected role's artwork, then every other role's behind
-  // it. Once per edition per page: a frame that failed is fetched again only when chosen.
+  // for a format made from frame artwork, fetch the selected role's artwork, then every
+  // other role's behind it. Once per edition and format per page: artwork that failed is
+  // fetched again only when chosen.
   function preloadFrames() {
-    if ($('layout').value !== 'avatar') return;
-    const event = $('event').value, selected = $('role').value;
+    if (!usesArtwork()) return;
+    const event = $('event').value, selected = $('role').value, layout = $('layout').value;
     const roles = state.catalog?.events.find(item => item.id === event)?.frameRoles;
-    if (!roles?.includes(selected) || state.preloaded.has(event)) return;
-    state.preloaded.add(event);
-    loadFrame(event, selected).catch(() => {}).then(() => {
-      for (const role of roles) if (role !== selected) loadFrame(event, role, true).catch(() => {});
+    if (!roles?.includes(selected) || state.preloaded.has(`${event}/${layout}`)) return;
+    state.preloaded.add(`${event}/${layout}`);
+    artwork(event, selected, layout).catch(() => {}).then(() => {
+      for (const role of roles) if (role !== selected) artwork(event, role, layout, true).catch(() => {});
     });
   }
 
@@ -717,10 +721,10 @@
         framePromise.catch(() => {}); // Reported below; never an unhandled rejection.
         const inputs = await abortable(previewInputs(size), controller.signal);
         if (version !== state.renderVersion) throw new DOMException('Request aborted', 'AbortError');
-        const frame = await abortable(framePromise, controller.signal);
+        const frames = await abortable(framePromise, controller.signal);
         if (version !== state.renderVersion) throw new DOMException('Request aborted', 'AbortError');
         const avatar = size ? inputs.avatars.get(size) : { data: null, status: 'hidden' };
-        const svg = renderer(inputs.profile, params.toString(), avatar.data, frame);
+        const svg = renderer(inputs.profile, params.toString(), avatar.data, ...frames);
         if (JSON.stringify(state.profile) !== inputs.fingerprint) {
           state.profile = inputs.profile;
           populateIndividualOptions();
@@ -732,8 +736,9 @@
       }
     }
     if (state.demo) throw new Error('Browser rendering is required for the bundled demo.');
-    // The server has no frame artwork, so there is no server-rendered avatar frame to fall back to.
+    // The server has no frame artwork, so there is nothing server-rendered to fall back to.
     if (params.get('layout') === 'avatar') throw new Error('Avatar frames are made in your browser, and its renderer could not be loaded. Reload the page to try again.');
+    if (usesArtwork(params.get('layout'), params.get('event'))) throw new Error('This social card is made in your browser, and its renderer could not be loaded. Reload the page to try again.');
     const response = await fetch(urlFor('/card', params), {
       signal: controller.signal, credentials: 'same-origin', headers: { Accept: 'image/svg+xml' },
     });
@@ -810,7 +815,7 @@
   function scheduleRender(delay = 0) {
     cancelRender();
     if (!state.profile) return;
-    if ($('layout').value !== 'avatar' && (state.backgroundBusy || state.backgroundError)) {
+    if (!usesArtwork() && (state.backgroundBusy || state.backgroundError)) {
       $('preview-stage').setAttribute('aria-busy', String(state.backgroundBusy));
       placeholder(state.backgroundBusy ? 'Preparing your background…' : 'Check your background image.',
         state.backgroundBusy ? 'Your image is being processed locally, without uploading it.' : 'Choose another image or remove the background to continue.');
@@ -870,7 +875,7 @@
     const timeout = setTimeout(() => controller.abort(), 30000);
     const params = parameters(state.username);
     const frame = $('layout').value === 'avatar';
-    const background = frame ? null : state.background;
+    const background = usesArtwork() ? null : state.background;
     const imageOptions = backgroundOptions();
     let localURL = null;
     try {
@@ -891,7 +896,7 @@
       const event = state.catalog?.events.find(item => item.id === $('event').value);
       const role = state.catalog?.roles.find(item => item.id === $('role').value);
       $('card-preview').alt = isSocial()
-        ? `${event.label}: ${role.statement}. ${frame ? ($('shape').value === 'square' ? 'Square avatar frame' : 'Round avatar frame') : 'Participation announcement'}.`
+        ? `${event.label}: ${role.statement}. ${frame ? (shape() === 'square' ? 'Square avatar frame' : 'Round avatar frame') : 'Participation announcement'}.`
         : `WordPress.org profile card for ${state.profile.name || state.username}`;
       $('card-preview').src = state.previewURL;
       $('card-preview').hidden = false;
@@ -952,12 +957,6 @@
     return false;
   }
 
-  function downloadSVG() {
-    if ($('layout').value === 'avatar' || !requireReady()) return;
-    try { download(state.svg, 'svg'); }
-    catch (error) { status(`Download failed: ${error.message}`, 'error'); }
-  }
-
   async function createPNG(version) {
     const source = URL.createObjectURL(state.svg);
     const social = isSocial();
@@ -992,7 +991,7 @@
     status('Preparing your PNG…');
     try { download(await createPNG(version), 'png'); }
     catch (error) {
-      if (version === state.renderVersion) status(`Could not create PNG: ${error.message} You can download SVG instead.`, 'error');
+      if (version === state.renderVersion) status(`Could not create PNG: ${error.message}`, 'error');
     } finally { $('download-png').disabled = false; }
   }
 
@@ -1008,14 +1007,20 @@
     // The removed builder master switch never suppresses individual choices.
     // Direct /card API requests still retain their legacy header option.
     if (params.has('header') && (params.getAll('header').length !== 1 || !['true', 'false'].includes(params.get('header')))) invalid = true;
-    for (const key of [...toggles, 'eventDetails']) {
+    for (const key of toggles) {
       $(key).checked = defaultVisibility(key);
       if (!params.has(key)) continue;
-      if (key === 'eventDetails' && !isSocial()) { invalid = true; continue; }
       const value = params.get(key);
       if (params.getAll(key).length !== 1 || !['true', 'false'].includes(value)) { invalid = true; continue; }
       if (value === 'false' && (key === 'avatar' ? isSocial() : key === 'name' && $('layout').value === 'announcement')) { invalid = true; continue; }
       $(key).checked = value === 'true';
+    }
+    // Event dates and location are part of every WordCamp social card. Links made
+    // while that was a choice still carry the setting.
+    if (params.has('eventDetails')) {
+      const value = params.get('eventDetails');
+      if (!isSocial() || params.getAll('eventDetails').length !== 1 || !['true', 'false'].includes(value)
+        || (value === 'false' && $('layout').value === 'announcement')) invalid = true;
     }
     for (const key of colors) {
       if (!params.has(key)) continue;
@@ -1035,8 +1040,10 @@
       state[key === 'event' ? 'pendingEvent' : 'pendingRole'] = params.get(key);
     }
     if (params.has('shape')) {
-      if ($('layout').value === 'avatar' && params.getAll('shape').length === 1 && ['circle', 'square'].includes(params.get('shape'))) $('shape').value = params.get('shape');
-      else invalid = true;
+      if ($('layout').value === 'avatar' && params.getAll('shape').length === 1 && ['circle', 'square'].includes(params.get('shape'))) {
+        $('shape-square').checked = params.get('shape') === 'square';
+        $('shape-circle').checked = !$('shape-square').checked;
+      } else invalid = true;
     }
     state.selectionUsername = $('username').value;
     for (const key of ['omitTeams']) {
@@ -1065,12 +1072,12 @@
     scheduleRender();
     if (isSocial()) loadEvents();
   });
-  for (const key of [...toggles, 'eventDetails']) $(key).addEventListener('change', () => {
+  for (const key of toggles) $(key).addEventListener('change', () => {
     syncControls();
     scheduleRender();
   });
   for (const key of colors) $(key).addEventListener('input', () => { state.customColorKeys.add(key); scheduleRender(60); });
-  for (const key of ['event', 'role', 'shape']) $(key).addEventListener('change', () => { state.restoreInvalid = false; syncControls(); scheduleRender(); });
+  for (const key of ['event', 'role', 'shape-circle', 'shape-square']) $(key).addEventListener('change', () => { state.restoreInvalid = false; syncControls(); scheduleRender(); });
   $('retry-events').addEventListener('click', () => loadEvents());
   $('preset-event').addEventListener('click', () => {
     if (!isSocial() || !state.catalog) return;
@@ -1085,7 +1092,6 @@
       if (!state.profile && !state.profileController) status(`${name === 'light' ? 'Light' : 'Dark'} palette selected. Create a card to see it.`);
     });
   }
-  $('download-svg').addEventListener('click', downloadSVG);
   $('download-png').addEventListener('click', downloadPNG);
   $('background-choose').addEventListener('click', () => $('background-file').click());
   $('background-file').addEventListener('change', chooseBackground);

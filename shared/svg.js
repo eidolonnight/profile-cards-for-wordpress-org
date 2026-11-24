@@ -30,7 +30,7 @@ function headerText(value, x, y, color, size, face = 'sans', weight = 400, extra
 // Match the strict public username grammar without trusting page-provided URLs.
 function profileLink(userName) {
   return typeof userName === 'string' && /^[a-z0-9][a-z0-9._-]{0,59}$/.test(userName) && !/\s/.test(userName)
-    ? `https://profiles.wp.org/${userName}/` : null;
+    ? `https://w.org/@${userName}` : null;
 }
 
 // Original, local 24-unit line drawings: never copy/inject upstream SVG or classes.
@@ -134,7 +134,7 @@ function luminance(hex) {
   const rgb = hex.match(/../g).map(c => parseInt(c, 16) / 255).map(c => c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
   return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722;
 }
-function contrastInk(color, background, minimum = 4.5) {
+export function contrastInk(color, background, minimum = 4.5) {
   const bg = luminance(background); const fg = luminance(color);
   return (Math.max(bg, fg) + 0.05) / (Math.min(bg, fg) + 0.05) >= minimum ? color : bg > 0.179 ? '000000' : 'FFFFFF';
 }
@@ -221,7 +221,7 @@ function socialGrid(profile, o, width, start = 0, centered = false) {
 function metadata(profile, o, width, start, size, centered = false) {
   const items = []; const out = []; const target = o.link ? profileLink(profile.userName) : null;
   if (o.header && o.handle && profile.userName) items.push({ key: 'handle', text: '@' + profile.userName, color: o.headerColor });
-  if (target) items.push({ key: 'link', text: `profiles.wp.org/${profile.userName}/`, color: o.linkColor, target });
+  if (target) items.push({ key: 'link', text: `w.org/@${profile.userName}`, color: o.linkColor, target });
   if (o.header && o.location && profile.location) items.push({ key: 'location', text: profile.location, color: o.subHeaderColor });
   if (o.header && o.joined && (profile.joined || profile.memberSince)) items.push({ key: 'joined', text: 'joined ' + (profile.joined || profile.memberSince), color: o.subHeaderColor });
   const lineHeight = size * 1.5; const gap = size * 1.3; let y = start; let x = 0; let row = [];
@@ -319,7 +319,10 @@ function renderProfile(profile, options, avatarData) {
   }
   const extras = [];
   if (o.badges && profile.badges?.length) {
-    const grid = badgeGrid(profile.badges, o, available, textHeight ? textHeight + 24 : 0);
+    // Named badges sit in fixed columns, as on the vertical card. Icons alone are
+    // equal cells and already line up.
+    const columns = o.badgeNames ? Math.max(1, Math.floor((available + 12) / 400)) : 0;
+    const grid = badgeGrid(profile.badges, o, available, textHeight ? textHeight + 24 : 0, 40, 22, columns);
     extras.push(grid.body); bottom = grid.bottom; pieces++;
   }
   if (extras.length) out.push(`<g data-profile-extras="true" transform="translate(${copyX} ${top})">${extras.join('')}</g>`);

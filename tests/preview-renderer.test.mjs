@@ -15,7 +15,8 @@ import { renderSocial } from '../shared/social.js';
 import { renderSocial as serverSocial } from '../functions/_social.js';
 import { FONT_CSS, FONT_STYLE_HASH } from '../shared/fonts.js';
 import { BROWSER_MODULES } from '../tools/browser-modules.mjs';
-import { eventFrameData, frameFetch } from './frame-artwork.mjs';
+import { eventFrameData, artworkFor, frameFetch } from './frame-artwork.mjs';
+import { EVENTS } from '../events/catalog.js';
 import { loadEventFrame } from '../events/frame-loader.js';
 import { EVENT_FRAMES } from '../events/frames.js';
 
@@ -23,12 +24,11 @@ const digest = value => createHash('sha256').update(value).digest('hex');
 const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
 const jpeg = new Uint8Array([255, 216, 255, 224, 0, 1]);
 const layouts = ['classic', 'profile', 'square', 'avatar', 'announcement'];
-// The browser fetches the published PNG and passes it in for every avatar frame.
-const frameFor = query => {
-  const options = queryOptions(new Request(`https://cards.test/card?${query.replace(/^\?/, '')}`));
-  return options.layout === 'avatar' ? eventFrameData(options.event, options.role) : null;
-};
-const withoutFrame = svg => svg.replace(/<image data-field="frame"[^>]*>/, '');
+// The browser fetches the published PNG and passes it in for every avatar frame. For the
+// social card of an edition that makes it from the same artwork (WordCamp Asia) it passes
+// the frame and its band.
+const frameFor = query => artworkFor(queryOptions(new Request(`https://cards.test/card?${query.replace(/^\?/, '')}`)));
+const withoutFrame = svg => svg.replace(/<image data-field="(?:frame|band)"[^>]*>/g, '');
 const fixture = (username, hash, rich) => `<meta property="profile:username" content="${username}"><header class="site-header"><h2>Zoë 李 &amp; 👩🏽‍💻 &lt;Example&gt;</h2><img class="avatar" src="https://secure.gravatar.com/avatar/${hash}">${rich ? '<span class="wp-p2-jobline">Engineer at Example &amp; Co</span><span class="wp-p2-loc">Málaga 日本</span><span class="wp-p2-joined">joined May 2001</span><div class="wp-p2-chip-row"><span class="wp-p2-chip-label">Teams</span><span class="wp-p2-chip">Core</span><span class="wp-p2-chip">Polyglots</span></div>' : ''}</header>${rich ? '<section class="wp-p2-badges-block"><span class="medal"><span class="mn">Core Contributor</span></span><span class="medal"><span class="mn">文書 &amp; Design</span></span></section>' : ''}`;
 const variants = [
   {},
@@ -61,16 +61,20 @@ for (const [index, layout] of layouts.entries()) test(layout === 'avatar' ? 'pre
       assert.equal(new URL(photoCalls[0]).searchParams.get('s'), String(size));
       for (const [variantIndex, variant] of variants.entries()) {
         const effectiveVariant = layout === 'announcement' ? { ...variant, avatar: 'true', name: 'true' } : layout === 'avatar' ? { ...variant, avatar: 'true', ...(variantIndex % 3 ? { shape: ['circle', 'square'][variantIndex % 2] } : {}) } : variant;
-        const query = new URLSearchParams({ username, layout, ...effectiveVariant, ...(social && variantIndex % 2 ? { event: 'europe-2027', role: 'speaker', eventDetails: 'false' } : {}) }).toString();
+        const query = new URLSearchParams({ username, layout, ...effectiveVariant, ...(social && variantIndex % 2 ? { event: 'europe-2027', role: 'speaker', eventDetails: layout === 'avatar' ? 'false' : 'true' } : {}) }).toString();
         const response = await cardGET(new Request(`https://cards.test/card?${query}`));
-        const frame = frameFor(query);
-        assert.equal(Boolean(frame), layout === 'avatar', 'every avatar frame is PNG artwork');
-        const actual = renderPreview(profile, variantIndex % 2 ? `?${query}` : query, avatar.data, frame);
-        if (layout === 'avatar') {
-          // Avatar frames are composed in the browser only; the server has no artwork.
+        const artwork = frameFor(query); const frame = artwork.length > 0;
+        // Even variants use the default edition, WordCamp Asia, whose social card is its frame artwork.
+        const derived = layout === 'announcement' && variantIndex % 2 === 0;
+        assert.equal(artwork.length, layout === 'avatar' ? 1 : derived ? 2 : 0, 'every avatar frame, and a card made from one, is PNG artwork');
+        const actual = renderPreview(profile, variantIndex % 2 ? `?${query}` : query, avatar.data, ...artwork);
+        if (frame) {
+          // Frame artwork is composed in the browser only; the server has none.
           assert.equal(response.status, 400);
           assert.equal((await response.json()).error.code, 'invalid_option');
-          assert.ok(actual.includes('data-layout="avatar"'));
+          assert.ok(actual.includes(`data-layout="${layout}"`));
+          assert.throws(() => renderPreview(profile, query, avatar.data, null), { code: 'frame_unavailable' });
+          if (derived) assert.throws(() => renderPreview(profile, query, avatar.data, artwork[0]), { code: 'frame_unavailable' });
         } else {
           assert.equal(response.status, 200);
           const expected = await response.text();
@@ -78,7 +82,8 @@ for (const [index, layout] of layouts.entries()) test(layout === 'avatar' ? 'pre
           assert.ok(actual === expected, `${username} variant ${variantIndex}: ${digest(actual)} != ${digest(expected)}`);
         }
         const visible = effectiveVariant.avatar !== 'false' && (social || effectiveVariant.header !== 'false');
-        assert.equal(actual.includes('data-field="frame"'), Boolean(frame));
+        assert.equal(actual.includes('data-field="frame"'), frame);
+        assert.equal(actual.includes('data-field="band"'), derived);
         assert.equal(withoutFrame(actual).includes('<image '), photo && visible);
       }
     }
@@ -99,7 +104,7 @@ test('preview and server retain identical validator, renderer and error identiti
   assert.throws(() => renderPreview(null, 'username=example'), { code: 'profile_mismatch' });
   for (const data of ['https://evil.test/photo.png', 'data:image/svg+xml;base64,PHN2Zz4=', 'data:image/png;base64,abc" onload="evil']) for (const layout of layouts) {
     const query = `username=example&layout=${layout}`;
-    assert.equal(withoutFrame(renderPreview(profile, query, data, frameFor(query))).includes('<image '), false);
+    assert.equal(withoutFrame(renderPreview(profile, query, data, ...frameFor(query))).includes('<image '), false);
   }
 });
 
@@ -123,8 +128,21 @@ test('avatar frames need their exact published artwork and never fall back to an
     for (const bad of [null, undefined, '', frame.slice(0, -4), frame + 'AAAA', frame.replace('image/png', 'image/svg'), frame.slice(0, -1) + '"', 'https://evil.test/frame.png']) {
       assert.throws(() => renderPreview(profile, query, null, bad), { code: 'frame_unavailable', status: 500 });
     }
-    // The same edition's social card stays drawn and ignores a stray payload.
-    assert.equal(renderPreview(profile, `username=example&layout=announcement&event=${event}&role=${role}`, null, frame).includes('data-field="frame"'), false);
+    const card = `username=example&layout=announcement&event=${event}&role=${role}`;
+    if (EVENTS.find(item => item.id === event).frameCard) {
+      // A social card made from the artwork needs exactly the same payload, and its band.
+      const band = eventFrameData(event, role, true);
+      assert.equal(await loadEventFrame(event, role, frameFetch, true), band);
+      assert.equal(createHash('sha256').update(Buffer.from(band.slice('data:image/png;base64,'.length), 'base64')).digest('hex'), EVENT_FRAMES[event].roles[role].band.sha256);
+      const made = renderPreview(profile, card, null, frame, band);
+      assert.ok(made.includes(`<image data-field="frame" width="1080" height="1080" href="${frame}"/>`));
+      assert.ok(made.includes(`<image data-field="band" width="1080" height="275.76" href="${band}"/>`));
+      for (const bad of [null, undefined, '', frame.slice(0, -4), frame + 'AAAA', 'https://evil.test/frame.png']) assert.throws(() => renderPreview(profile, card, null, bad, band), { code: 'frame_unavailable', status: 500 });
+      for (const bad of [null, undefined, '', band.slice(0, -4), band + 'AAAA', band.slice(0, -1) + '"', frame, 'https://evil.test/band.png']) assert.throws(() => renderPreview(profile, card, null, frame, bad), { code: 'frame_unavailable', status: 500 });
+    } else {
+      // A social card the project draws ignores a stray payload.
+      assert.equal(renderPreview(profile, card, null, frame).includes('data-field="frame"'), false);
+    }
   }
   for (const [event, role] of [['europe-2026', 'attendee'], ['asia-2027', 'unknown'], ['unknown', 'attendee'], ['__proto__', 'attendee'], ['asia-2027', 'constructor']]) {
     assert.equal(eventFrameData(event, role), null);
@@ -164,12 +182,14 @@ test('browser module graph runs without fetch, linkedom, Node or DOM globals', (
     await loader.link(linker);
     await loader.evaluate();
     if (!/^\\/frames\\/asia-2027-attendee\\.png\\?v=[a-f0-9]{64}$/.test(loader.namespace.eventFramePath('asia-2027', 'attendee'))) throw new Error('Unexpected frame path');
-    // Avatar frames embed the published PNG, handed in as a data URL.
-    const frame = 'data:image/png;base64,' + (await readFile(root + 'events/wordcamp-asia/frames/asia-2027-attendee.png')).toString('base64');
-    const results = ${JSON.stringify(layouts)}.map(layout => createHash('sha256').update(entry.namespace.renderPreview({ userName: 'example', name: 'Zoë 李', badges: [] }, 'username=example&layout=' + layout, null, layout === 'avatar' ? frame : null)).digest('hex'));
+    if (!/^\\/frames\\/asia-2027-attendee-band\\.png\\?v=[a-f0-9]{64}$/.test(loader.namespace.eventFramePath('asia-2027', 'attendee', true))) throw new Error('Unexpected band path');
+    // Avatar frames embed the published PNG, handed in as a data URL; a social card made from one embeds its band too.
+    const url = async name => 'data:image/png;base64,' + (await readFile(root + 'events/wordcamp-asia/frames/' + name)).toString('base64');
+    const frame = await url('asia-2027-attendee.png'), band = await url('asia-2027-attendee-band.png');
+    const results = ${JSON.stringify(layouts)}.map(layout => createHash('sha256').update(entry.namespace.renderPreview({ userName: 'example', name: 'Zoë 李', badges: [] }, 'username=example&layout=' + layout, null, ...(layout === 'avatar' ? [frame] : layout === 'announcement' ? [frame, band] : []))).digest('hex'));
     console.log(JSON.stringify(results));
   `;
   const result = spawnSync(process.execPath, ['--experimental-vm-modules', '--input-type=module', '-e', script], { encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);
-  assert.deepEqual(JSON.parse(result.stdout), layouts.map(layout => digest(renderPreview({ userName: 'example', name: 'Zoë 李', badges: [] }, `username=example&layout=${layout}`, null, frameFor(`username=example&layout=${layout}`)))));
+  assert.deepEqual(JSON.parse(result.stdout), layouts.map(layout => digest(renderPreview({ userName: 'example', name: 'Zoë 李', badges: [] }, `username=example&layout=${layout}`, null, ...frameFor(`username=example&layout=${layout}`)))));
 });

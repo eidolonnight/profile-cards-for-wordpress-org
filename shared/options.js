@@ -36,11 +36,14 @@ export function queryOptions(request) {
     options.role = params.get('role') ?? 'attendee';
     if (!EVENTS.some(event => event.id === options.event)) throw new ProfileError('invalid_option', 'Select a supported event.');
     if (!ROLES.some(role => role.id === options.role)) throw new ProfileError('invalid_option', 'Select a supported participation role.');
-    if (layout === 'avatar') {
+    const { frameRoles, frameCard } = EVENTS.find(event => event.id === options.event);
+    if (layout === 'avatar' || frameCard) {
       // Avatar frames are PNG artwork per edition and role; never substitute another design.
-      const { frameRoles } = EVENTS.find(event => event.id === options.event);
+      // An edition's social card can be derived from the same artwork (frameCard).
       if (!frameRoles) throw new ProfileError('invalid_option', 'Avatar frames are not available for this event yet.');
-      if (!frameRoles.includes(options.role)) throw new ProfileError('invalid_option', 'Select a participation role available for this event\u2019s avatar frame.');
+      if (!frameRoles.includes(options.role)) throw new ProfileError('invalid_option', `Select a participation role available for this event\u2019s ${layout === 'avatar' ? 'avatar frame' : 'social card'}.`);
+    }
+    if (layout === 'avatar') {
       options.shape = params.get('shape') ?? 'circle';
       if (!['circle', 'square'].includes(options.shape)) throw new ProfileError('invalid_option', 'shape must be circle or square.');
     }
@@ -50,7 +53,7 @@ export function queryOptions(request) {
     if (value !== null && value !== 'true' && value !== 'false') throw new ProfileError('invalid_option', `${key} must be true or false.`);
     options[key] = value === null ? fallback : value === 'true';
   }
-  if (layout === 'announcement' && (!options.avatar || !options.name)) throw new ProfileError('invalid_option', 'WordCamp social cards require avatar and name.');
+  if (layout === 'announcement' && (!options.avatar || !options.name || !options.eventDetails)) throw new ProfileError('invalid_option', 'WordCamp social cards require avatar, name and event details.');
   if (layout === 'avatar' && !options.avatar) throw new ProfileError('invalid_option', 'WordCamp avatar frames require avatar.');
   for (const [key, fallback] of Object.entries({ ...DEFAULT_COLORS, ...(social ? EVENTS.find(event => event.id === options.event).colors : {}) })) {
     const value = params.get(key) ?? (['profile', 'square'].includes(layout) && key === 'linkColor' ? options.subHeaderColor : fallback);

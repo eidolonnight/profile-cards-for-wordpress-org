@@ -11,11 +11,10 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-EVENT_DIRECTORIES = ('wordcamp-asia', 'wordcamp-europe', 'wordcamp-india', 'wordcamp-us')
+EVENT_DIRECTORIES = ('wordcamp-asia', 'wordcamp-europe', 'wordcamp-india')
 # Preserve the original public object ordering and metric asset basenames.
-ASSET_ORDER = ('Faculty-Glyphic-400.woff2', 'Kumbh-Sans-400.woff2', 'Kumbh-Sans-500.woff2',
-               'Cardo-400.woff2', 'Cardo-700.woff2', 'Open-Sans-300.woff2',
-               'Open-Sans-400.woff2', 'Open-Sans-600.woff2', 'Inter-latin.woff2')
+ASSET_ORDER = ('Faculty-Glyphic-400.woff2', 'Kumbh-Sans-400.woff2',
+               'Cardo-400.woff2', 'Cardo-700.woff2', 'Inter-latin.woff2')
 
 
 def face_key(item, weight):
@@ -46,10 +45,6 @@ def load_sources(root=ROOT):
             data = local_file(directory, name).read_bytes()
             if len(data) != item['bytes'] or hashlib.sha256(data).hexdigest() != item['sha256']:
                 raise ValueError(f'Font bytes/hash mismatch: {directory / name}')
-            if 'sourcePath' in item:
-                source = local_file(directory, item['sourcePath']).read_bytes()
-                if hashlib.sha256(source).hexdigest() != item['sourceSha256']:
-                    raise ValueError(f'Font source hash mismatch: {directory / item["sourcePath"]}')
             if name in assets and assets[name][1] != item:
                 raise ValueError(f'Conflicting asset definition: {name}')
             assets.setdefault(name, (directory, item, data))
@@ -79,13 +74,6 @@ def build():
     inputs, selections = load_sources()
     faces, css = {}, {}
     for directory, item, data in inputs:
-        if 'sourcePath' in item:
-            source = local_file(directory, item['sourcePath']).read_bytes()
-            compressed = TTFont(io.BytesIO(source), recalcTimestamp=False)
-            compressed.flavor = 'woff2'
-            output = io.BytesIO(); compressed.save(output)
-            if output.getvalue() != data:
-                raise ValueError('WOFF2 conversion drift: ' + item['path'])
         original = TTFont(io.BytesIO(data))
         alias = 'Event ' + item['family']
         weights = '100 900' if 'fvar' in original else str(item['weights'][0])

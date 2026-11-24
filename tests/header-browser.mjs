@@ -32,7 +32,7 @@ try {
   await assertInitialDemo(page); check('fresh builder renders the bundled Matt demo without profile API requests');
   await page.locator('#layout').selectOption('profile');
   assert.equal(await page.locator('#layout').inputValue(), 'profile');
-  assert.equal(await page.locator('#layout option:checked').innerText(), 'Landscape banner');
+  assert.equal(await page.locator('#layout option:checked').innerText(), 'Landscape profile banner');
   assert.equal(await page.locator('#display-settings > legend').count(), 1);
   assert.equal(await page.locator('#profile-fields legend').count(), 0);
   assert.equal(await page.locator('#display-settings > legend').innerText(), 'Profile content');
@@ -53,7 +53,7 @@ try {
   assert.equal(initial.querySelector('[data-field="jobLine"]').textContent, profile.jobTitle + ' at ' + profile.organization);
   assert.equal(initial.querySelector('[data-field="location"]').textContent, profile.location);
   assert.equal(initial.querySelectorAll('[data-field="userId"],[data-field="website"],[data-field="github"],[data-field="slack"]').length, 0);
-  assert.equal(initial.querySelectorAll('a').length, initialSocialCount + 1); assert.equal(initial.querySelector('a').getAttribute('href'), 'https://profiles.wp.org/eidolonnight/');
+  assert.equal(initial.querySelectorAll('a').length, initialSocialCount + 1); assert.equal(initial.querySelector('a').getAttribute('href'), 'https://w.org/@eidolonnight');
   assert.equal(initial.querySelectorAll('[data-field="badges"]').length, profile.badges.length);
   assert.equal(await page.locator('#userId,#website,#github,#slack,#social-items,#linkColor').count(), 0); assert.equal(await page.locator('#social').isVisible(), true);
   assert.equal(await page.locator('#link').isVisible(), true); assert.equal(await page.locator('#link').isDisabled(), false);
@@ -73,7 +73,7 @@ try {
   }
   check('desktop builder has controls on the left and preview on the right');
   await page.screenshot({ path: evidence + '/desktop-light.png', fullPage: true }); await overflow();
-  const svg = await download('#download-svg', 'header-light.svg'); assert.equal(svg.toString(), initialSVG);
+  assert.equal(await page.locator('#download-svg').count(), 0, 'PNG is the only download');
   const png = await download('#download-png', 'header-light.png'); assert.equal(png.subarray(0, 8).toString('hex'), '89504e470d0a1a0a'); assert.equal(png.readUInt32BE(16), Number(initial.querySelector('svg').getAttribute('width')) * 2);
   report.png = { bytes: png.length, width: png.readUInt32BE(16), height: png.readUInt32BE(20), sha256: createHash('sha256').update(png).digest('hex') };
   await assertDownloadedPNG(page, png);
@@ -107,10 +107,9 @@ try {
   await page.locator('#link').uncheck(); assert.equal(parseHTML(await preview()).document.querySelector('[data-field="link"]'), null);
   await page.locator('#link').check();
   const linked = parseHTML(await preview()).document;
-  assert.equal(linked.querySelectorAll('a').length, initialSocialCount + 1); assert.equal(linked.querySelector('a').getAttribute('href'), 'https://profiles.wp.org/eidolonnight/');
+  assert.equal(linked.querySelectorAll('a').length, initialSocialCount + 1); assert.equal(linked.querySelector('a').getAttribute('href'), 'https://w.org/@eidolonnight');
   assert.equal(linked.querySelector('[data-field="link"] text').getAttribute('fill'), '#50575E');
   await download('#download-png', 'landscape-icons-link.png');
-  await download('#download-svg', 'landscape-icons-link.svg');
   await selectPalette(page, 'dark');
   assert.equal(parseHTML(await preview()).document.querySelector('[data-field="link"] text').getAttribute('fill'), '#C3C4C7');
   await download('#download-png', 'landscape-icons-link-dark.png');
@@ -169,11 +168,11 @@ try {
   await page.waitForFunction(() => document.getElementById('exports').disabled && document.getElementById('empty-title').textContent === 'Nothing to show on this card.');
   assert.equal(await page.locator('#card-preview').isHidden(), true); assert.equal(await page.locator('#card-preview').getAttribute('src'), null);
   assert.match(await page.locator('#status').innerText(), /All available card content is hidden/);
-  for (const id of ['download-png', 'download-svg']) assert.equal(await page.locator('#' + id).isDisabled(), true);
+  assert.equal(await page.locator('#download-png').isDisabled(), true);
   await page.locator('#link').check();
   const linkOnly = parseHTML(await preview()).document;
   assert.equal(linkOnly.querySelectorAll('[data-field]').length, 1); assert.equal(linkOnly.querySelectorAll('[data-field="link"] a').length, 1);
-  assert.equal(linkOnly.querySelector('a').getAttribute('href'), 'https://profiles.wp.org/eidolonnight/');
+  assert.equal(linkOnly.querySelector('a').getAttribute('href'), 'https://w.org/@eidolonnight');
   for (const id of profileControls) await page.locator('#' + id).check(); await ready();
   check('individually hiding all Landscape content clears stale preview and exports; link alone recovers, then every control can be restored');
   const emptyResponse = await context.request.get(base + '/card?username=eidolonnight&layout=profile&header=false&badges=false&social=false&link=false'); assert.equal(emptyResponse.status(), 200); assert.equal(parseHTML(await emptyResponse.text()).document.querySelectorAll('[data-field]').length, 0);

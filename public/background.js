@@ -302,8 +302,10 @@ export function applyBackground(svgText, background, controls = {}) {
   const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
   const root = doc.documentElement;
   if (root?.localName !== 'svg' || doc.querySelector('parsererror')) throw invalid('Invalid renderer SVG.');
-  // Avatar frames are finished artwork, opaque outside the photo: nothing to fill.
-  const base = root.getAttribute('data-layout') === 'avatar' ? null : [...root.children].find(child => child.localName === 'rect');
+  // Frame artwork is finished and opaque outside the photo, in an avatar frame and in a
+  // social card derived from one: nothing to fill.
+  const artwork = root.getAttribute('data-layout') === 'avatar' || root.querySelector('image[data-field="frame"]');
+  const base = artwork ? null : [...root.children].find(child => child.localName === 'rect');
   if (!base) throw invalid('The renderer SVG has no supported background.');
   const geometry = backgroundGeometry('rect', Object.fromEntries([...base.attributes].map(attr => [attr.name, attr.value])));
   const data = cropData(background, geometry, options);

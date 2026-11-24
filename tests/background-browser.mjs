@@ -41,7 +41,9 @@ const ready = page => page.waitForFunction(() => {
   const image = document.getElementById('card-preview');
   return !document.getElementById('exports').disabled && !image.hidden && image.complete && image.naturalWidth > 0;
 }, null, { timeout: 45000 });
-const fresh = async page => { await page.goto(origin + '/'); await page.locator('#username').fill('eidolonnight'); await page.locator('#create-button').click(); await ready(page); await page.locator('#layout').selectOption('profile'); await ready(page); await page.locator('#customize-colors summary').click(); };
+// The profile format is chosen before the lookup: the default WordCamp Asia social card is
+// frame artwork, which takes no background and has no server-rendered fallback.
+const fresh = async page => { await page.goto(origin + '/'); await page.locator('#layout').selectOption('profile'); await page.locator('#username').fill('eidolonnight'); await page.locator('#create-button').click(); await ready(page); await page.locator('#customize-colors summary').click(); };
 const svgSource = page => page.locator('#card-preview').evaluate(image => fetch(image.src).then(r => r.text()));
 const setControl = async (page, id, value) => {
   await page.locator('#background-' + id).evaluate((el, value) => { el.value = String(value); el.dispatchEvent(new Event('input', { bubbles: true })); }, value);
@@ -64,12 +66,11 @@ const download = async (page, type, label) => {
   const item = await pending, path = evidence + '/' + label + '.' + type;
   await item.saveAs(path); return readFile(path);
 };
-// An avatar frame downloads as a PNG only: its pixels are compared with the displayed image.
-const verifyExport = async (page, label, { svgDownload = true } = {}) => {
+// Every format downloads as a PNG only: its pixels are compared with the displayed image.
+const verifyExport = async (page, label) => {
   const preview = await svgSource(page);
-  assert.equal(await page.locator('#download-svg').isVisible(), svgDownload);
-  const svg = svgDownload ? await download(page, 'svg', label) : Buffer.from(preview), png = await download(page, 'png', label);
-  assert.equal(hash(svg), hash(preview), 'SVG download must equal the displayed SVG');
+  assert.equal(await page.locator('#download-svg').count(), 0, 'there is no SVG download');
+  const svg = Buffer.from(preview), png = await download(page, 'png', label);
   assert.ok(png.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])));
   const pixels = await page.evaluate(async ({ svg, png }) => {
     const image = async src => { const i = new Image(); i.src = src; await i.decode(); return i; };
@@ -152,15 +153,29 @@ try {
       // formats is neither offered nor composited behind them, in either shape or for
       // any edition, and nothing is sent.
       for (const [event, shape] of [['asia-2027', 'circle'], ['asia-2027', 'square'], ['europe-2027', 'circle'], ['europe-2027', 'square']]) {
-        await page.locator('#event').selectOption(event); await page.locator('#shape').selectOption(shape); await ready(page);
+        await page.locator('#event').selectOption(event); await page.locator('#shape-' + shape).check(); await ready(page);
         assert.equal(await page.locator('#customize-colors').isVisible(), false);
         const sent = report.requests.length;
-        const frame = await verifyExport(page, `frame-${event}-${shape}`, { svgDownload: false });
+        const frame = await verifyExport(page, `frame-${event}-${shape}`);
         assert.match(frame.svg, /data-field="frame"/); assert.doesNotMatch(frame.svg, /data-local-background|LOCAL_BACKGROUND_METADATA_DO_NOT_TRANSMIT|private-background-marker/);
         assert.equal(frame.pixels.png.corner[3], shape === 'square' ? 255 : 0); assert.equal(frame.pixels.png.center[3], 255, 'the photo is always included');
         assert.equal(report.requests.length, sent, 'exporting a frame sends nothing');
       }
       continue;
+    }
+    if (layout === 'announcement') {
+      // The WordCamp Asia social card is that edition's frame artwork: no background
+      // behind it either. An edition whose card is drawn takes the background.
+      await page.locator('#event').selectOption('asia-2027'); await ready(page);
+      assert.equal(await page.locator('#customize-colors').isVisible(), false);
+      const sent = report.requests.length;
+      const card = await verifyExport(page, 'derived-asia-2027');
+      assert.match(card.svg, /data-layout="announcement"/); assert.match(card.svg, /data-field="frame"/);
+      assert.doesNotMatch(card.svg, /data-local-background|LOCAL_BACKGROUND_METADATA_DO_NOT_TRANSMIT|private-background-marker/);
+      assert.equal(card.pixels.png.corner[3], 255);
+      assert.equal(report.requests.length, sent, 'exporting the derived card sends nothing');
+      await page.locator('#event').selectOption('europe-2027'); await ready(page);
+      assert.equal(await page.locator('#customize-colors').isVisible(), true);
     }
     const result = await verifyExport(page, 'background-' + layout);
     assert.match(result.svg, /data-local-background="true"/);

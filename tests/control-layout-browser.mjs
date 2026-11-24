@@ -66,7 +66,7 @@ try {
     assert.deepEqual(await page.evaluate(() => performance.getEntriesByType('resource').map(entry => new URL(entry.name).pathname).filter(path => ['/json', '/preview-data', '/card'].includes(path))), []);
     assert.match(await page.locator('#status').innerText(), /Demo using a bundled snapshot of Matt’s profile/);
     assert.equal(await page.locator('#layout').inputValue(), 'announcement');
-    assert.deepEqual(await page.locator('#layout option:not([hidden])').evaluateAll(options => options.map(option => option.textContent)), ['WordCamp social card', 'WordCamp avatar frame', 'Vertical card', 'Landscape banner']);
+    assert.deepEqual(await page.locator('#layout option:not([hidden])').evaluateAll(options => options.map(option => option.textContent)), ['WordCamp social card', 'WordCamp avatar frame', 'Vertical profile card', 'Landscape profile banner']);
     assert.deepEqual(await page.locator('.section-heading .step').allTextContents(), ['00', '01']);
     for (const id of ['avatar', 'name']) {
       assert.equal(await page.locator('#' + id).isChecked(), true, `${id} required default`);
@@ -108,7 +108,7 @@ try {
     assert.equal(await page.locator('#card-preview').getAttribute('src'), null);
     assert.equal(await page.locator('#open-preview').getAttribute('href'), null);
     assert.equal(await page.locator('#download-png').isDisabled(), true);
-    assert.equal(await page.locator('#download-svg').isDisabled(), true);
+    assert.equal(await page.locator('#download-svg').count(), 0, 'PNG is the only download');
     assert.match(await page.locator('#status').innerText(), /All available card content is hidden/);
     for (const id of profileControls) assert.equal(await page.locator('#' + id).isEnabled(), id !== 'badgeNames', id);
     assert.equal(await page.locator('#team-items').evaluate(node => node.disabled), true);
@@ -119,7 +119,7 @@ try {
     await ready();
     assert.equal(await page.locator('#team-items').evaluate(node => !node.disabled), true);
     report.checks.push('Profile content is a fieldset legend with one two-column grid, all selected defaults and selected teams; individual all-empty guard and link-only recovery work; developer disclosure removed without losing privacy copy');
-    const applicable = { profile: profileControls, square: profileControls, classic: ['avatar', 'badges', 'link'], avatar: [], announcement: ['avatar', 'name', 'handle', 'eventDetails'] };
+    const applicable = { profile: profileControls, square: profileControls, classic: ['avatar', 'badges', 'link'], avatar: [], announcement: ['handle'] };
     for (const layout of ['profile', 'square', 'classic', 'avatar', 'announcement']) {
       await page.locator('#layout').selectOption(layout); await ready();
       const social = ['avatar', 'announcement'].includes(layout);
@@ -128,9 +128,11 @@ try {
       assert.equal(await page.locator('#header').count(), 0);
       for (const id of profileControls) {
         assert.equal(await page.locator('#' + id).isVisible(), applicable[layout].includes(id), `${layout}/${id} visibility`);
-        const required = layout === 'announcement' && ['avatar', 'name'].includes(id);
-        assert.equal(await page.locator('#' + id).isEnabled(), applicable[layout].includes(id) && !required, `${layout}/${id} applicability`);
+        assert.equal(await page.locator('#' + id).isEnabled(), applicable[layout].includes(id), `${layout}/${id} applicability`);
       }
+      // Choices that cannot be changed are not shown, and nothing is labeled as required.
+      if (social) for (const id of ['avatar', 'name']) assert.equal(await page.locator('#' + id).isChecked(), true, `${layout}/${id} always included`);
+      assert.equal(await page.locator('.controls').evaluate(node => /\(required\)|are required/i.test(node.innerText)), false);
       for (const id of applicable[layout]) assert.equal(await page.locator('#' + id).isChecked(), true, `${layout}/${id} fresh default`);
       assert.equal(await page.locator('#event-controls').evaluate(node => node.disabled), !social);
       if (social) {
@@ -138,11 +140,20 @@ try {
         assert.equal(await page.evaluate(() => document.activeElement.id), 'event');
         await page.keyboard.press('Tab'); assert.equal(await page.evaluate(() => document.activeElement.id), 'role');
         // The avatar frame adds a shape and has no profile content to choose.
-        assert.equal(await page.locator('#shape').isVisible(), layout === 'avatar');
+        assert.equal(await page.locator('#shape-setting').isVisible(), layout === 'avatar');
         assert.equal(await page.locator('#display-settings').isVisible(), layout !== 'avatar');
-        assert.equal(await page.locator('#download-svg').isVisible(), layout !== 'avatar', 'an avatar frame downloads as a PNG only');
-        if (layout === 'avatar') { await page.keyboard.press('Tab'); assert.equal(await page.evaluate(() => document.activeElement.id), 'shape'); assert.equal(await page.locator('#shape').inputValue(), 'circle'); }
-        assert.equal(await page.locator('#eventDetails').isVisible(), layout === 'announcement');
+        assert.equal(await page.locator('#download-svg').count(), 0, 'every format downloads as a PNG only');
+        if (layout === 'avatar') {
+          // The shape picker is one tab stop: two side-by-side choices of equal size, circle first.
+          await page.keyboard.press('Tab'); assert.equal(await page.evaluate(() => document.activeElement.id), 'shape-circle'); assert.equal(await page.locator('#shape-circle').isChecked(), true);
+          const [circle, square] = await page.locator('.shape-option').evaluateAll(nodes => nodes.map(node => { const box = node.getBoundingClientRect(), swatch = node.querySelector('.shape-swatch'); return { x: box.x, y: box.y, width: box.width, height: box.height, radius: getComputedStyle(swatch).borderTopLeftRadius, fill: getComputedStyle(swatch).backgroundColor }; }));
+          assert.equal(circle.y, square.y); assert.ok(circle.x + circle.width <= square.x); assert.equal(circle.width, square.width); assert.ok(circle.height >= 44);
+          assert.equal(circle.radius, '50%'); assert.equal(square.radius, '0px'); assert.notEqual(circle.fill, 'rgba(0, 0, 0, 0)'); assert.notEqual(square.fill, 'rgba(0, 0, 0, 0)');
+          await page.keyboard.press('ArrowRight'); await ready(); assert.equal(await page.locator('#shape-square').isChecked(), true);
+          await page.keyboard.press('ArrowLeft'); await ready(); assert.equal(await page.locator('#shape-circle').isChecked(), true);
+        }
+        assert.equal(await page.locator('#eventDetails').count(), 0, 'event dates and location are not a choice');
+        assert.equal(await page.locator('#event-settings legend').evaluateAll(nodes => nodes.filter(node => node.offsetParent && !node.closest('#shape-setting')).length), 0, 'no WordCamp heading');
         const eventBox = await page.locator('#event-settings').boundingBox(), profileBox = await page.locator('#profile-form').boundingBox();
         assert.ok(profileBox.y + profileBox.height <= eventBox.y);
       }

@@ -1,5 +1,5 @@
-// Offline branding acceptance: actual /card handler for social cards, the browser
-// renderer for avatar frames, strict CSP and real raster.
+// Offline branding acceptance: actual /card handler for drawn social cards, the browser
+// renderer for avatar frames and social cards derived from them, strict CSP and real raster.
 // EVIDENCE_DIR=/outside/repo PLAYWRIGHT_MODULE=/.../index.mjs node tests/event-themes-browser.mjs
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
@@ -11,7 +11,7 @@ import { EVENT_FONTS, EVENT_FONT_STYLE_HASH } from '../shared/event-fonts.js';
 import { queryOptions } from '../shared/options.js';
 import { renderSocial } from '../shared/social.js';
 import { EVENT_FRAMES } from '../events/frames.js';
-import { eventFrameData } from './frame-artwork.mjs';
+import { eventFrameData, usesFrameArtwork, artworkFor } from './frame-artwork.mjs';
 import { BROWSER_MODULES, FRAME_FILES, browserModuleSource } from '../tools/browser-modules.mjs';
 import { renderPreview } from '../shared/preview.js';
 const published = new Map(FRAME_FILES.map(([source, path]) => [`/${path}`, source]));
@@ -35,12 +35,12 @@ const server = createServer(async (req, res) => {
       res.writeHead(response.status, Object.fromEntries(response.headers)); res.end(await response.text()); return;
     }
     if (url.pathname === '/frame') {
-      // Fixture only. Avatar frames are composed in the browser, never served: this hands the
+      // Fixture only. Frame artwork is composed in the browser, never served: this hands the
       // same renderer output to the page as a document, under the card CSP, so that its painted
       // fonts can be inspected the way a served card's are.
       const options = queryOptions(new Request(url));
-      if (options.layout !== 'avatar') { res.writeHead(404).end(); return; }
-      const svg = renderPreview({ name: 'Ada Example', userName: 'branding-fixture' }, url.search, null, eventFrameData(options.event, options.role));
+      if (!usesFrameArtwork(options)) { res.writeHead(404).end(); return; }
+      const svg = renderPreview({ name: 'Ada Example', userName: 'branding-fixture' }, url.search, null, ...artworkFor(options));
       res.writeHead(200, { 'Content-Type': 'image/svg+xml; charset=utf-8', 'Content-Security-Policy': `default-src 'none'; img-src data:; font-src data:; style-src '${EVENT_FONT_STYLE_HASH[options.event]}'; base-uri 'none'; frame-ancestors 'none'` });
       res.end(svg); return;
     }
@@ -60,11 +60,9 @@ const origin = 'http://127.0.0.1:4215';
 // Names independently read from the pinned binaries, not inferred from CSS.
 const postScriptNames = {
   'faculty-glyphic-400': 'FacultyGlyphic-Regular',
-  'kumbh-sans-400': 'KumbhSans-Regular', 'kumbh-sans-500': 'KumbhSans-Medium',
+  'kumbh-sans-400': 'KumbhSans-Regular',
   'cardo-400': 'Cardo-Regular', 'cardo-700': 'Cardo-Bold',
-  'inter-400': 'Inter', 'inter-600': 'Inter',
-  'open-sans-300': 'OpenSans-Light', 'open-sans-400': 'OpenSans-Regular',
-  'open-sans-600': 'OpenSans-SemiBold'
+  'inter-400': 'Inter', 'inter-600': 'Inter'
 };
 const fontMatches = (fonts, face) => fonts.length > 0 && fonts.every(font => font.isCustomFont && font.postScriptName === postScriptNames[face] && font.glyphCount > 0);
 const report = { cases: [], pageErrors: [], consoleErrors: [], externalRequests: [] };
@@ -83,9 +81,12 @@ try {
   });
   for (const event of EVENTS) for (const layout of ['avatar','announcement']) for (const role of ROLES) {
     const params = new URLSearchParams({ username: 'branding-fixture', layout, event: event.id, role: role.id, avatar: 'true' });
-    // The card route serves the social card and refuses the avatar frame.
-    if (layout === 'avatar') assert.equal((await page.request.get(origin + '/card?' + params)).status(), 400, 'no avatar frame on the card route');
-    const url = origin + (layout === 'avatar' ? '/frame?' : '/card?') + params;
+    // The card route serves a drawn social card and refuses frame artwork: every avatar
+    // frame, and the WordCamp Asia social card that is derived from its frames.
+    const frameLayout = layout === 'avatar', derived = layout === 'announcement' && event.frameCard === true;
+    assert.equal(derived, layout === 'announcement' && event.id === 'asia-2027');
+    if (frameLayout || derived) assert.equal((await page.request.get(origin + '/card?' + params)).status(), 400, 'no frame artwork on the card route');
+    const url = origin + (frameLayout || derived ? '/frame?' : '/card?') + params;
     const response = await page.goto(url);
     assert.equal(response.status(), 200);
     const source = await response.text();
@@ -94,10 +95,12 @@ try {
     const key = event.id + '-' + layout + '-' + role.id;
     // Avatar frames carry their lettering as PNG artwork: the only live text is the
     // fallback initials, and nothing is composited behind them.
-    const artwork = layout === 'avatar';
+    const artwork = frameLayout || derived;
     assert.ok(Object.hasOwn(EVENT_FRAMES, event.id), `${event.id}: every edition has avatar-frame artwork`);
     assert.equal(source.includes('data-field="frame"'), artwork);
     if (artwork) assert.ok(source.includes(`href="${eventFrameData(event.id, role.id)}"`), `${key}: exact frame artwork`);
+    assert.equal(source.includes('data-field="band"'), derived);
+    if (derived) assert.ok(source.includes(`href="${eventFrameData(event.id, role.id, true)}"`), `${key}: exact band`);
     const loaded = await page.evaluate(async fonts => {
       await document.fonts.ready;
       const records = [];
@@ -114,7 +117,8 @@ try {
     const { nodeIds } = await cdp.send('DOM.querySelectorAll', { nodeId: root.nodeId, selector: 'svg text' });
     assert.equal(nodeIds.length, loaded.dimensions.length);
     const eventFonts = EVENT_FONTS[event.id];
-    const fields = { avatar: eventFonts.display, event: eventFonts.display, name: eventFonts.display, handle: eventFonts.body, eventDetails: eventFonts.body, role: eventFonts.emphasis };
+    // A card made from frame artwork sets the name like the artwork's own lines of text.
+    const fields = { avatar: eventFonts.display, event: eventFonts.display, name: derived ? eventFonts.body : eventFonts.display, handle: eventFonts.body, eventDetails: eventFonts.body, role: eventFonts.emphasis };
     for (let i = 0; i < nodeIds.length; i++) {
       const text = loaded.dimensions[i]; const expected = fields[text.field];
       assert.ok(expected, `${key}: unreviewed text field ${text.field}`);
@@ -123,7 +127,8 @@ try {
       text.renderedFonts = (await cdp.send('CSS.getPlatformFontsForNode', { nodeId: nodeIds[i] })).fonts;
       assert.ok(fontMatches(text.renderedFonts, expected.key), `${key}/${text.field}: actual rendered font does not match the embedded event binary`);
     }
-    const expectedFields = artwork ? ['avatar'] : ['avatar', 'event', 'handle', 'name', 'role', ...(event.dateLabel || event.location ? ['eventDetails'] : [])];
+    // A derived card letters only the name and username; its artwork states the rest.
+    const expectedFields = derived ? ['avatar', 'handle', 'name'] : artwork ? ['avatar'] : ['avatar', 'event', 'handle', 'name', 'role', ...(event.dateLabel || event.location ? ['eventDetails'] : [])];
     assert.deepEqual([...new Set(loaded.dimensions.map(t => t.field))].sort(), expectedFields.sort());
     // Prove the check detects real fallback, not only matching declarations.
     const negativeIndex = nodeIds.length - 1;
@@ -144,14 +149,16 @@ try {
     await page.screenshot({ path: `${evidence}/${key}-csp.png`, omitBackground: true });
     // Canonical module comparison uses the parsed profile fixture, no real users.
     await page.goto(origin);
-    const result = await page.evaluate(async ({ source, event, layout, role, artwork }) => {
+    const result = await page.evaluate(async ({ source, event, layout, role, artwork, derived }) => {
       const { renderSocial } = await import('/preview/social.js');
-      // The page's loader fetches the published PNG, exactly as the builder does.
-      const frame = artwork ? await (await import('/preview/events/frame-loader.js')).loadEventFrame(event, role) : null;
+      // The page's loader fetches the published PNGs, exactly as the builder does.
+      const { loadEventFrame } = await import('/preview/events/frame-loader.js');
+      const frame = artwork ? await loadEventFrame(event, role) : null;
+      const band = derived ? await loadEventFrame(event, role, undefined, true) : null;
       const { queryOptions } = await import('/preview/options.js');
       const { applyBackground } = await import('/background.js');
       const options = queryOptions(new Request(location.origin + '/card?' + new URLSearchParams({ username: 'branding-fixture', layout, event, role, avatar: 'true' })));
-      const canonical = renderSocial({ name: 'Ada Example', userName: 'branding-fixture' }, options, null, frame);
+      const canonical = renderSocial({ name: 'Ada Example', userName: 'branding-fixture' }, options, null, frame, band);
       const raster = async svg => {
         const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
         try {
@@ -164,14 +171,16 @@ try {
       };
       const bgCanvas = document.createElement('canvas'); bgCanvas.width = bgCanvas.height = 32;
       const c = bgCanvas.getContext('2d'); c.fillStyle = '#F200E4'; c.fillRect(0,0,32,32);
-      const hiddenSource = renderSocial({ name: 'Ada Example', userName: 'branding-fixture' }, { ...options, avatar: false }, null, frame);
+      const hiddenSource = renderSocial({ name: 'Ada Example', userName: 'branding-fixture' }, { ...options, avatar: false }, null, frame, band);
       const d = new DOMParser().parseFromString(source, 'image/svg+xml');
       let custom = null, hiddenCustom = null, changed = null, local = null, backgroundRefused = false, squareSource = null, hiddenSquareSource = null;
       if (artwork) {
         // Opaque artwork has nothing to fill; compositing must fail closed.
         try { applyBackground(source, { width: 32, height: 32, canvas: bgCanvas }); } catch { backgroundRefused = true; }
-        squareSource = renderSocial({ name: 'Ada Example', userName: 'branding-fixture' }, { ...options, shape: 'square' }, null, frame);
-        hiddenSquareSource = renderSocial({ name: 'Ada Example', userName: 'branding-fixture' }, { ...options, shape: 'square', avatar: false }, null, frame);
+        if (!derived) {
+          squareSource = renderSocial({ name: 'Ada Example', userName: 'branding-fixture' }, { ...options, shape: 'square' }, null, frame);
+          hiddenSquareSource = renderSocial({ name: 'Ada Example', userName: 'branding-fixture' }, { ...options, shape: 'square', avatar: false }, null, frame);
+        }
       } else {
         custom = applyBackground(source, { width: 32, height: 32, canvas: bgCanvas });
         hiddenCustom = applyBackground(hiddenSource, { width: 32, height: 32, canvas: bgCanvas });
@@ -191,13 +200,25 @@ try {
         const fallback = await raster(serializer.serializeToString(isolated));
         exportFonts.push({ field: node.closest('[data-field]').getAttribute('data-field'), text: node.textContent, face: node.getAttribute('data-face'), generic, pixelsDifferFromFallback: branded.png !== fallback.png });
       }
-      const colors = renderSocial({ name: 'Ada Example', userName: 'branding-fixture' }, { ...options, foreground: '123456', headerColor: 'FEDCBA', nameColor: 'ABCDEF' }, null, frame);
-      return { canonical: canonical === source, exportFonts, base: await raster(source), hidden: await raster(hiddenSource), ...(artwork ? { backgroundRefused, defaultShape: d.documentElement.getAttribute('data-shape'), square: await raster(squareSource), hiddenSquare: await raster(hiddenSquareSource) } : { custom: await raster(custom), hiddenCustom: await raster(hiddenCustom), customInserted: Boolean(local), fontStyleUnchanged: changed.querySelector('style').textContent === d.querySelector('style').textContent }), customColors: colors.includes('#123456') && colors.includes('#FEDCBA'), fields: [...d.querySelectorAll('[data-field]')].map(n => n.getAttribute('data-field')) };
-    }, { source, event: event.id, layout, role: role.id, artwork });
+      const colors = renderSocial({ name: 'Ada Example', userName: 'branding-fixture' }, { ...options, foreground: '123456', headerColor: 'FEDCBA', nameColor: 'ABCDEF' }, null, frame, band);
+      return { canonical: canonical === source, exportFonts, base: await raster(source), hidden: await raster(hiddenSource), ...(derived ? { backgroundRefused, recolored: colors !== canonical } : artwork ? { backgroundRefused, defaultShape: d.documentElement.getAttribute('data-shape'), square: await raster(squareSource), hiddenSquare: await raster(hiddenSquareSource) } : { custom: await raster(custom), hiddenCustom: await raster(hiddenCustom), customInserted: Boolean(local), fontStyleUnchanged: changed.querySelector('style').textContent === d.querySelector('style').textContent }), customColors: colors.includes('#123456') && colors.includes('#FEDCBA'), fields: [...d.querySelectorAll('[data-field]')].map(n => n.getAttribute('data-field')) };
+    }, { source, event: event.id, layout, role: role.id, artwork, derived });
     assert.equal(result.exportFonts.length, loaded.dimensions.length);
     for (const font of result.exportFonts) assert.equal(font.pixelsDifferFromFallback, true, `${key}/${font.field}: PNG must use event font, not generic fallback`);
-    assert.equal(result.canonical, true); assert.equal(result.customColors, true);
-    if (artwork) {
+    assert.equal(result.canonical, true); assert.equal(result.customColors, !derived);
+    if (derived) {
+      // Finished artwork: no local background, no recoloring, and opaque everywhere. The band
+      // shows the artwork's own background: its ground, or a pattern on it.
+      assert.equal(result.backgroundRefused, true, 'no local background behind frame artwork');
+      assert.equal(result.recolored, false, 'color options do not change frame artwork');
+      assert.deepEqual(result.fields, ['band', 'avatar', 'frame', 'name', 'handle']);
+      const ground = EVENT_FRAMES[event.id].roles[role.id].ground.match(/../g).map(value => parseInt(value, 16));
+      for (const variant of [result.base, result.hidden]) for (const pixel of [variant.corner, variant.topGround]) {
+        assert.equal(pixel[3], 255, `${key}: opaque band`);
+        assert.ok(pixel.slice(0, 3).reduce((sum, value, index) => sum + Math.abs(value - ground[index]), 0) <= 120, `${key}: the band is the artwork's background, ${pixel}`);
+      }
+      for (const variant of [result.base, result.hidden]) assert.equal(variant.center[3], 255);
+    } else if (artwork) {
       assert.equal(result.backgroundRefused, true, 'no local background behind frame artwork');
       assert.deepEqual(result.fields, ['avatar', 'frame']);
       assert.equal(result.defaultShape, 'circle');
@@ -212,7 +233,7 @@ try {
       assert.equal(result.base.png === result.custom.png, false, 'local background remains visible');
     }
     await writeFile(`${evidence}/${key}.svg`, source);
-    for (const variant of artwork ? ['base','hidden','square','hiddenSquare'] : ['base','custom','hidden','hiddenCustom']) { await writeFile(`${evidence}/${key}-${variant}.png`, Buffer.from(result[variant].png.split(',')[1], 'base64')); delete result[variant].png; }
+    for (const variant of derived ? ['base','hidden'] : artwork ? ['base','hidden','square','hiddenSquare'] : ['base','custom','hidden','hiddenCustom']) { await writeFile(`${evidence}/${key}-${variant}.png`, Buffer.from(result[variant].png.split(',')[1], 'base64')); delete result[variant].png; }
     report.cases.push({ key, sha256: createHash('sha256').update(source).digest('hex'), bytes: source.length, csp, fallbackNegativeControlRejected: true, ...loaded, ...result });
     console.log(`PASS ${key}: ${loaded.dimensions.length} actual text fonts and PNG font checks`);
   }

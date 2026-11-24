@@ -13,12 +13,11 @@ Everything for each event lives in one folder under [`events/`](events/), shared
 - [WordCamp Asia](events/wordcamp-asia/)
 - [WordCamp Europe](events/wordcamp-europe/)
 - [WordCamp India](events/wordcamp-india/)
-- [WordCamp US](events/wordcamp-us/) (not offered)
 
 Each folder contains:
 
 - `theme.js`: colors and styling choices.
-- `artwork.js`: the SVG artwork and event headings.
+- `artwork.js`: the SVG artwork and headings of a social card drawn here.
 - `fonts/`: font files, licenses and source records.
 - `frames/`: avatar-frame PNGs, one per role. Yours once you send them; stand-ins drawn here until then.
 - `event.js`: edition details, including dates and official links.

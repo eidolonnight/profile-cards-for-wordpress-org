@@ -34,7 +34,7 @@ test('social route headers truthfully report initials for an unavailable require
     for (const layout of ['announcement']) for (const avatar of ['true']) {
       const calls=[];
       globalThis.fetch=async url => {calls.push(url);return url.startsWith('https://profiles.wordpress.org/')?new Response(html('e'.repeat(32)),{headers:{'Content-Type':'text/html'}}):new Response('',{status:404});};
-      const response=await GET(request({username:`missing-${layout}-${avatar}`,layout,avatar,header:'false'}));
+      const response=await GET(request({username:`missing-${layout}-${avatar}`,layout,event:'europe-2027',avatar,header:'false'}));
       assert.equal(response.status,200); assert.equal(response.headers.get('X-Profile-Avatar'),avatar==='true'?'initials':'hidden');
       assert.equal(calls.length,avatar==='true'?2:1); const d=parseHTML(await response.text()).document;assert.equal(d.querySelector('image:not([data-field="frame"])'),null);
       assert.equal(d.querySelectorAll('image[data-field="frame"]').length,layout==='avatar'?1:0);
@@ -48,7 +48,7 @@ test('repeated social card requests share one high-resolution avatar cache', asy
   globalThis.fetch=async url => { calls.push(url);return url.startsWith('https://profiles.wordpress.org/')?new Response(html('a'.repeat(32)),{headers:{'Content-Type':'text/html'}}):new Response(new Uint8Array([137,80,78,71,13,10,26,10]),{headers:{'Content-Type':'image/png'}}); };
   try {
     for(const layout of ['announcement','announcement']) {
-      const response=await GET(request({username:'social-shared-photo',layout}));
+      const response=await GET(request({username:'social-shared-photo',layout,event:'europe-2027'}));
       assert.equal(response.status,200);assert.equal(response.headers.get('X-Profile-Avatar'),'embedded');await response.text();
     }
     assert.deepEqual(calls,['https://profiles.wordpress.org/social-shared-photo/',`https://secure.gravatar.com/avatar/${'a'.repeat(32)}?s=1024&d=404&r=g`]);
@@ -58,7 +58,7 @@ test('repeated social card requests share one high-resolution avatar cache', asy
 test('invalid social route queries fail before fetching and use private error headers', async () => {
   const saved=globalThis.fetch; let calls=0;globalThis.fetch=async () => {calls++;throw new Error('must not fetch');};
   try {
-    for (const params of [{layout:'profile',event:'asia-2027'},{layout:'avatar',role:'official'},{layout:'announcement',event:'unknown'},{layout:'announcement',event:'us-2027'},{layout:'announcement',avatar:'false'},{layout:'announcement',name:'false'},{layout:'avatar',eventDetails:'yes'},{layout:'avatar',avatar:'false'},{layout:'avatar',shape:'oval'},{layout:'announcement',shape:'circle'},{layout:'profile',shape:'square'}]) {
+    for (const params of [{layout:'profile',event:'asia-2027'},{layout:'avatar',role:'official'},{layout:'announcement',event:'unknown'},{layout:'announcement',event:'asia-2026'},{layout:'announcement',avatar:'false'},{layout:'announcement',name:'false'},{layout:'avatar',eventDetails:'yes'},{layout:'avatar',avatar:'false'},{layout:'avatar',shape:'oval'},{layout:'announcement',shape:'circle'},{layout:'profile',shape:'square'}]) {
       const response=await GET(request({username:'synthetic',...params}));assert.equal(response.status,400);assert.equal(response.headers.get('Cache-Control'),'private, no-store');
     }
     assert.equal(calls,0);
@@ -78,9 +78,21 @@ test('the card route has no avatar frame: every avatar request is refused before
     }
     assert.equal((await GET(request({username:'frame-request',layout:'avatar'}))).status,400);
     assert.equal(calls,0);
-    // The same edition's social card is still served.
+    // A social card derived from that artwork is refused the same way, including the
+    // default edition; it is never served as a drawn substitute.
+    assert.deepEqual(EVENTS.filter(event => event.frameCard).map(event => event.id),['asia-2027']);
+    for (const params of [{event:'asia-2027',role:'mediapartner'},{event:'asia-2027'},{},{role:'speaker',handle:'false'},{event:'asia-2027',foreground:'000000'}]) {
+      const response=await GET(request({username:'frame-request',layout:'announcement',...params}));
+      assert.equal(response.status,400,JSON.stringify(params)); assert.equal(response.headers.get('Cache-Control'),'private, no-store');
+      const body=await response.json();
+      assert.equal(body.error.code,'invalid_option'); assert.equal(body.error.message,'This event\u2019s social card is not available from this route.');
+    }
+    assert.equal(calls,0);
+    // A social card the project draws is still served.
     globalThis.fetch=async url => url.startsWith('https://profiles.wordpress.org/')?new Response(html('f'.repeat(32)),{headers:{'Content-Type':'text/html'}}):new Response(new Uint8Array([137,80,78,71,13,10,26,10]),{headers:{'Content-Type':'image/png'}});
-    const card=await GET(request({username:'frame-request',layout:'announcement',event:'asia-2027',role:'mediapartner'}));
-    assert.equal(card.status,200); assert.equal((await card.text()).includes('data-field="frame"'),false);
+    for (const event of ['europe-2027','india-2027']) {
+      const card=await GET(request({username:'frame-request',layout:'announcement',event,role:'mediapartner'}));
+      assert.equal(card.status,200,event); assert.equal((await card.text()).includes('data-field="frame"'),false);
+    }
   } finally {globalThis.fetch=saved;}
 });

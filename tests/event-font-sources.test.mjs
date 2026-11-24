@@ -13,23 +13,20 @@ const root = new URL('../', import.meta.url);
 const sha = value => createHash('sha256').update(value).digest('hex');
 const read = path => readFile(new URL(path, root));
 const selections = {
-  asia: ['faculty-glyphic-400', 'kumbh-sans-400', 'kumbh-sans-500'],
+  asia: ['faculty-glyphic-400', 'kumbh-sans-400', 'kumbh-sans-400'],
   europe: ['cardo-400', 'inter-400', 'inter-600'],
   india: ['cardo-700', 'inter-400', 'inter-600'],
-  us: ['open-sans-300', 'open-sans-400', 'open-sans-600'],
 };
-// Original provenance records, including URL, bytes, conversion and reuse caveats.
+// Original provenance records, including URL, bytes and reuse caveats.
 const provenanceHashes = {
-  asia: 'fc3bd497c7bc950ba3c6ab6da8a1b726d976fcdfcbd3fcb2d10f41464972897e',
+  asia: '8e25eb36c2f7ac630e9f8c5cbe8da49f3f6647df79790d528bca32ab7b5a3653',
   europe: '9d85eaf4b7eff92c4297ea48089c8053443056b5b928d64ec8a03de60c8bed7f',
   india: 'd5bf951f2f7e013cbeb76a01356874dd70e9be51d0082e7f5291b2a3fbe66243',
-  us: '67776ade4139663fe97c1f0a77ea385433e782305751ea2b039dc856e5c81d7b',
 };
 const licenses = {
   asia: ['facultyglyphic-OFL.txt', 'kumbhsans-OFL.txt'],
   europe: ['cardo-OFL.txt', 'Inter-OFL.txt'],
   india: ['cardo-OFL.txt', 'Inter-OFL.txt'],
-  us: ['OpenSans-OFL.txt'],
 };
 
 test('each event owns its exact pinned sources, provenance and edition selections', async () => {
@@ -46,11 +43,6 @@ test('each event owns its exact pinned sources, provenance and edition selection
       assert.equal(data.length, asset.bytes);
       assert.equal(sha(data), asset.sha256);
       files.push(asset.path);
-      if (asset.sourcePath) {
-        assert.match(asset.sourcePath, /^[\w-]+\.ttf$/);
-        assert.equal(sha(await read(directory + asset.sourcePath)), asset.sourceSha256);
-        files.push(asset.sourcePath);
-      }
       for (const weight of asset.weights) {
         const key = `${asset.family.toLowerCase().replaceAll(' ', '-')}-${weight}`;
         assert.equal(fonts.EVENT_FONT_METRICS[key].asset, asset.path);
@@ -61,7 +53,7 @@ test('each event owns its exact pinned sources, provenance and edition selection
   }
   const base = await readdir(new URL('assets/fonts/', root));
   assert.ok(!base.includes('event-provenance.json'));
-  assert.ok(!base.some(name => /^(Cardo-|Faculty-|Kumbh-|Open-Sans-|OpenSans-|cardo-|facultyglyphic-|kumbhsans-)/.test(name)));
+  assert.ok(!base.some(name => /^(Cardo-|Faculty-|Kumbh-|cardo-|facultyglyphic-|kumbhsans-)/.test(name)));
   for (const event of ['europe', 'india']) {
     for (const name of ['Inter-latin.woff2', 'Inter-OFL.txt']) {
       assert.deepEqual(await read(`events/wordcamp-${event}/fonts/${name}`), await read(`assets/fonts/${name}`));
@@ -82,12 +74,12 @@ test('base font inputs, generator and generated module stay byte-identical', asy
   for (const [path, hash] of Object.entries(unchanged)) assert.equal(sha(await read(path)), hash, path);
 });
 
-test('font exports, key ordering, CSS and CSP hashes match the pre-move baseline', () => {
+test('font exports, key ordering, CSS and CSP hashes match the pinned baseline', () => {
   const hashes = {
-    EVENT_FONTS: 'ac9b910be8d6a205fc0c4e98d05c5ce08de5458bb70f61fd2f97721c90db7497',
-    EVENT_FONT_CSS: 'cee93b2e8933405cf8e7eb77f688e8374b597edea04e1066f402be55db42545e',
-    EVENT_FONT_METRICS: 'e5c06c55ef9e7b079f51b56ec7cc6511eb866501040b059e48144046eb050d45',
-    EVENT_FONT_STYLE_HASH: '2427ff00d67d2aaf3130b6112bf2a6434bade236c28f83536bd5f47d4cf801f1',
+    EVENT_FONTS: 'e42fb61d66fc16fbcee0779afcd454b1021a7fd8b80c48422b2e1ea498ad46fd',
+    EVENT_FONT_CSS: '1f2b97d5363c6f164abd1eabfcc5559f7a219b0d17e2aec3ee8f66d9fb65d212',
+    EVENT_FONT_METRICS: '1b245e1e925f8f1ae5f9fac56351bda4f9e50b7d254a318d033563bfbfd985e7',
+    EVENT_FONT_STYLE_HASH: 'aae36b3206e4321c22cb5f1d183ebae8e8e96c8079015348f0380cbca9abd516',
   };
   assert.deepEqual(Object.keys(compatibility), Object.keys(fonts));
   for (const key of Object.keys(fonts)) assert.equal(compatibility[key], fonts[key], key);
@@ -122,7 +114,7 @@ test('generator rejects conflicting duplicates, corrupt copies and nonlocal sele
       }
       if (name === 'corrupt duplicate bytes') await writeFile(join(fixture, 'events/wordcamp-india/fonts/Inter-latin.woff2'), 'corrupt');
       // -S excludes site-packages: routine npm tests/builds need no fontTools.
-      const result = spawnSync('python3', ['-B', '-S', '-c', 'import runpy,sys; from pathlib import Path; inputs,selections=runpy.run_path(sys.argv[1])["load_sources"](Path(sys.argv[2])); assert len(inputs)==9; assert len(selections)==4', script, fixture], { encoding: 'utf8' });
+      const result = spawnSync('python3', ['-B', '-S', '-c', 'import runpy,sys; from pathlib import Path; inputs,selections=runpy.run_path(sys.argv[1])["load_sources"](Path(sys.argv[2])); assert len(inputs)==5; assert len(selections)==3', script, fixture], { encoding: 'utf8' });
       assert.ifError(result.error);
       if (error) {
         assert.notEqual(result.status, 0);

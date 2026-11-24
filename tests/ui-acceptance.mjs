@@ -14,9 +14,8 @@ const empty = async page => {
 
 export async function assertDownloadOnlyActions(page) {
   assert.equal(await page.locator('#copy-card, #copy-markdown, #copy-fallback, #copy-text, #copy-png, .copy-actions').count(), 0);
-  // An avatar frame is a photo under PNG artwork, so it offers the PNG only.
-  const frame = await page.locator('#layout').inputValue() === 'avatar';
-  assert.deepEqual(await page.locator('#exports button').evaluateAll(nodes => nodes.filter(node => !node.hidden).map(node => node.id)), frame ? ['download-png'] : ['download-png', 'download-svg']);
+  // Every format offers the PNG only.
+  assert.deepEqual(await page.locator('#exports button').evaluateAll(nodes => nodes.filter(node => !node.hidden).map(node => node.id)), ['download-png']);
   assert.equal(await page.getByRole('button', { name: /Copy Card URL|Copy Markdown/i }).count(), 0);
 }
 
@@ -33,7 +32,7 @@ export async function cardURLFromControls(page) {
       square: ['avatar', 'badges', 'link', 'name', 'jobTitle', 'organization', 'handle', 'location', 'joined', 'teams', 'badgeNames', 'social'],
       classic: ['avatar', 'badges', 'link'],
       avatar: ['avatar'],
-      announcement: ['avatar', 'name', 'handle', 'eventDetails'],
+      announcement: ['avatar', 'name', 'handle'],
     };
     // Avatar frames are finished artwork: they send a shape and no colors.
     const colors = {
@@ -42,12 +41,14 @@ export async function cardURLFromControls(page) {
     };
     const params = new URLSearchParams({ username: value('username'), layout });
     for (const key of fields[layout]) params.set(key, String(document.getElementById(key).checked));
-    for (const key of colors[layout] || ['headerColor', 'nameColor', 'subHeaderColor', 'badgeLabelColor', 'foreground']) {
+    // A social card derived from frame artwork shows no color controls and sends no colors.
+    const finished = layout === 'announcement' && document.getElementById('customize-colors').hidden;
+    for (const key of finished ? [] : colors[layout] || ['headerColor', 'nameColor', 'subHeaderColor', 'badgeLabelColor', 'foreground']) {
       params.set(key, value(key).slice(1).toUpperCase());
     }
     if (layout === 'avatar' || layout === 'announcement') {
       params.set('event', value('event')); params.set('role', value('role'));
-      if (layout === 'avatar') params.set('shape', value('shape'));
+      if (layout === 'avatar') params.set('shape', document.querySelector('#shape-setting input[name="shape"]:checked').value);
     } else if (layout === 'profile' || layout === 'square') {
       const omitted = [...document.querySelectorAll('#team-options input[type="checkbox"]:not(:checked)')].map(input => input.value);
       if (omitted.length) params.set('omitTeams', omitted.join(','));
@@ -72,6 +73,13 @@ export async function assertInitialDemo(page) {
   assert.equal(await page.title(), 'Profile Cards for WordPress.org');
   assert.equal(await page.locator('#page-title, .intro h1, [aria-labelledby~="page-title"]').count(), 0);
   assert.equal(await page.locator('.intro-copy').innerText(), 'Bring your WordPress.org profile with you. Make a contributor card, frame your avatar, or announce your next WordCamp.');
+  // The default format is the WordCamp Asia social card. It is the edition's frame
+  // artwork, so it has no color or background controls.
+  assert.equal(await page.locator('#layout').inputValue(), 'announcement'); assert.equal(await page.locator('#event').inputValue(), 'asia-2027');
+  assert.equal(await page.locator('#customize-colors').isVisible(), false);
+  assert.ok((await page.locator('#card-preview').evaluate(async image => (await fetch(image.src)).text())).includes('data-field="frame"'));
+  // An edition whose social card is drawn has them, behind a closed disclosure.
+  await page.locator('#event').selectOption('europe-2027'); await ready(page);
   assert.equal(await page.locator('#customize-colors').evaluate(el => el.open), false);
   assert.equal(await page.locator('#preset-light').isVisible(), false);
   assert.equal(await page.locator('#preset-dark').isVisible(), false);
@@ -81,16 +89,17 @@ export async function assertInitialDemo(page) {
   assert.equal(await page.locator('#preset-dark').isVisible(), true);
   await page.locator('#customize-colors summary').press('Enter');
   assert.equal(await page.locator('#preset-light').isVisible(), false);
+  await page.locator('#event').selectOption('asia-2027'); await ready(page);
   assert.match(await page.locator('.wordmark').innerText(), /Profile Cards for WordPress\.org$/);
   assert.equal(await page.locator('.edition').innerText(), 'Built for contributors');
   assert.equal(await page.locator('.intro .eyebrow, .privacy-note, #refresh, #try-profile, #download-json, #copy-builder').count(), 0);
   assert.equal(await page.locator('#username').inputValue(), '');
   assert.equal(await page.locator('#username').getAttribute('placeholder'), 'Your WordPress.org Username');
   assert.match(await page.locator('#profile-form').innerText(), /normally cached for up to 1 hour[\s\S]*Recently cached details may be used while WordPress\.org limits requests/);
-  const actions = ['download-png', 'download-svg'];
+  const actions = ['download-png'];
   await assertDownloadOnlyActions(page);
   assert.deepEqual(await page.locator('#layout option:not([hidden])').evaluateAll(nodes => nodes.map(node => [node.value, node.textContent])), [
-    ['announcement', 'WordCamp social card'], ['avatar', 'WordCamp avatar frame'], ['square', 'Vertical card'], ['profile', 'Landscape banner'],
+    ['announcement', 'WordCamp social card'], ['avatar', 'WordCamp avatar frame'], ['square', 'Vertical profile card'], ['profile', 'Landscape profile banner'],
   ]);
   assert.equal(await page.locator('#layout').inputValue(), 'announcement');
   assert.deepEqual(await page.locator('.section-heading .step').allTextContents(), ['00', '01']);
@@ -105,7 +114,7 @@ export async function assertInitialDemo(page) {
   assert.deepEqual(await page.locator('#exports .download-actions > button').evaluateAll(nodes => nodes.map(node => node.id)), actions);
   assert.deepEqual(await page.locator('#exports .primary').evaluateAll(nodes => nodes.map(node => node.id)), ['download-png']);
   assert.equal(await page.locator('#download-png').innerText(), 'Download PNG');
-  assert.equal(await page.locator('#download-svg').innerText(), 'Download SVG');
+  assert.equal(await page.locator('#download-svg').count(), 0);
   assert.equal(await page.locator('#exports').evaluate(el => el.disabled), false);
   assert.equal(await page.locator('#card-preview').isHidden(), false);
   assert.ok(await page.locator('#card-preview').evaluate(image => image.complete && image.naturalWidth > 0));
@@ -230,10 +239,10 @@ export async function assertCleanupFailures(context, base) {
       try {
         await page.locator('#download-png').click();
         await page.waitForFunction(() => document.getElementById('status').dataset.kind === 'error' && !document.getElementById('download-png').disabled);
-        assert.match(await page.locator('#status').innerText(), /Could not create PNG:.*(?:PNG conversion failed|Synthetic canvas conversion failure).*SVG/);
+        assert.match(await page.locator('#status').innerText(), /Could not create PNG:.*(?:PNG conversion failed|Synthetic canvas conversion failure)/);
+        assert.doesNotMatch(await page.locator('#status').innerText(), /SVG/);
         assert.equal(await page.evaluate(() => window.downloadAttempts), attempts);
         assert.equal(downloads.length, before);
-        assert.equal(await page.locator('#download-svg').isEnabled(), true);
         assert.equal(await page.locator('#download-png').isEnabled(), true);
       } finally { await page.evaluate(() => window.restoreCanvas()); }
       await downloadPNG(page);

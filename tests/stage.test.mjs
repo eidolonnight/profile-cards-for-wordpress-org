@@ -87,9 +87,9 @@ test('stage versions every browser asset edge without changing canonical sources
   // The frame loader asks for a published PNG by a URL its registry hash pins, independent of the release revision.
   const loader = await readFile(join(root, 'preview/events/frame-loader.js'), 'utf8');
   assert.ok(loader.includes(`import { EVENT_FRAMES } from './frames.js?v=${revision}';`));
-  assert.ok(loader.includes('`/frames/${event}-${role}.png?v=${frame.sha256}`'));
+  assert.ok(loader.includes("`/frames/${event}-${role}${band ? '-band' : ''}.png?v=${frame.sha256}`"));
   assert.deepEqual(await Promise.all(['public', 'shared', 'functions', 'events'].map(path => snapshot(join(source, path)))), before);
-  // Fixed files (including the browser-only frame loader), both copies of each event module, and one PNG per frame.
+  // Fixed files (including the browser-only frame loader), both copies of each event module, and one PNG per frame and band.
   assert.equal(manifest.length, 39 + EVENT_MODULES.length * 2 + FRAME_FILES.length);
   const stagedPaths = (await readdir(root, { recursive: true, withFileTypes: true }))
     .filter(entry => entry.isFile()).map(entry => join(entry.parentPath, entry.name).slice(root.length + 1)).sort();
@@ -152,7 +152,8 @@ test('stage has exact manifest hashes, no dependency metadata, and refuses an ex
   assert.equal(manifest.some(x => /package|test|README|manifest|provenance|\.(woff2|ttf|png)$/.test(x.path) && !['site-logo.png', 'favicon.png', ...frames].includes(x.path)), false);
   // Frame artwork ships as its own PNG files, byte for byte, and nowhere else: no payload
   // modules, no backend copy of the browser-only loader, nothing else from a frames/ folder.
-  assert.ok(frames.length > 0 && frames.every(path => /^frames\/[a-z]+-20\d{2}-[a-z]+\.png$/.test(path)));
+  assert.ok(frames.length > 0 && frames.every(path => /^frames\/[a-z]+-20\d{2}-[a-z]+(?:-band)?\.png$/.test(path)));
+  assert.equal(frames.filter(path => path.endsWith('-band.png')).length, 6, 'one band per WordCamp Asia role');
   for (const [from, to] of FRAME_FILES) assert.deepEqual(await readFile(join(root, to)), await readFile(join(source, from)), to);
   assert.equal(manifest.some(x => x.path.includes('frame-data') || x.path === 'events/frame-loader.js' || x.path === 'functions/_frames.js' || /^(?:preview\/)?events\/.*\/frames\//.test(x.path)), false);
   for (const item of manifest) assert.equal(createHash('sha256').update(await readFile(join(root, item.path))).digest('hex'), item.sha256);

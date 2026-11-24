@@ -1,22 +1,27 @@
 import { EVENT_FRAMES } from './frames.js';
 
 // Browser only. Avatar-frame artwork is published as plain PNG files at
-// /frames/<edition>-<role>.png. An image file cannot be linked from an SVG that is
-// shown or exported as an image, so the builder fetches the PNG here and the
+// /frames/<edition>-<role>.png, and a frame's social-card band beside it at
+// /frames/<edition>-<role>-band.png. An image file cannot be linked from an SVG that
+// is shown or exported as an image, so the builder fetches the PNG here and the
 // renderer embeds it. The registry hash in the URL changes exactly when the artwork
 // does, so no cache can hand back another version unnoticed.
-export const eventFramePath = (event, role) => {
+const record = (event, role, band) => {
   const frames = Object.hasOwn(EVENT_FRAMES, event) ? EVENT_FRAMES[event] : null;
   const frame = frames && Object.hasOwn(frames.roles, role) ? frames.roles[role] : null;
-  return frame ? `/frames/${event}-${role}.png?v=${frame.sha256}` : null;
+  return (band ? frame?.band : frame) ?? null;
+};
+export const eventFramePath = (event, role, band = false) => {
+  const frame = record(event, role, band);
+  return frame ? `/frames/${event}-${role}${band ? '-band' : ''}.png?v=${frame.sha256}` : null;
 };
 
 // Resolves to the PNG as a data URL, or to null when the edition or role has no
 // artwork. Anything but the exact registered bytes is an error, never a substitute.
-export async function loadEventFrame(event, role, fetcher = globalThis.fetch) {
-  const path = eventFramePath(event, role);
+export async function loadEventFrame(event, role, fetcher = globalThis.fetch, band = false) {
+  const path = eventFramePath(event, role, band);
   if (!path) return null;
-  const frame = EVENT_FRAMES[event].roles[role];
+  const frame = record(event, role, band);
   const response = await fetcher(path, { credentials: 'same-origin', redirect: 'error' });
   if (!response.ok) throw new Error(`Frame artwork request failed with status ${response.status}.`);
   const bytes = new Uint8Array(await response.arrayBuffer());

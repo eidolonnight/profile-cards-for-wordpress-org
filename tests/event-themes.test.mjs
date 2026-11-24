@@ -8,16 +8,16 @@ import { EVENTS, ROLES } from '../shared/events.js';
 import { renderSocial } from '../shared/social.js';
 import { queryOptions, DEFAULT_COLORS } from '../shared/options.js';
 import { EVENT_FRAMES } from '../events/frames.js';
-import { eventFrameData } from './frame-artwork.mjs';
-// Avatar-frame artwork is an input, like the photo: null for the social card.
-const frameFor = (event, layout, role = 'attendee') => layout === 'avatar' ? eventFrameData(event, role) : null;
+import { artworkFor } from './frame-artwork.mjs';
+// Frame artwork is an input, like the photo: none for a social card the project draws.
+const frameFor = (event, layout, role = 'attendee') => artworkFor({ event, layout, role });
 const profile = { name: 'Ada Example', userName: 'synthetic' };
-const families = { 'asia-2027': ['Faculty Glyphic', 'Kumbh Sans'], 'europe-2027': ['Cardo', 'Inter'], 'india-2027': ['Cardo', 'Inter'], 'us-2027': ['Open Sans', 'Open Sans'] };
+const families = { 'asia-2027': ['Faculty Glyphic', 'Kumbh Sans'], 'europe-2027': ['Cardo', 'Inter'], 'india-2027': ['Cardo', 'Inter'] };
+// `decoration` belongs to a drawn social card. WordCamp Asia's is made from its frame artwork.
 const expected = {
-  'asia-2027': { colors: ['F4F1EA','000073','000073','302F2F','005ED6'], weights: [400,400,500], decoration: 'botanical' },
+  'asia-2027': { colors: ['F8E7D5','000073','000073','302F2F','005ED6'], weights: [400,400,400] },
   'europe-2027': { colors: ['F9F9F9','111111','111111','636363','111111'], weights: [400,400,600], decoration: 'editorial' },
-  'india-2027': { colors: ['1A1A1A','FAFAFA','FAFAFA','D4D4D4','FF8A3D'], weights: [700,400,600], decoration: 'typographic' },
-  'us-2027': { colors: ['FFFFFF','0073AA','32373C','32373C','0073AA'], weights: [300,400,600], decoration: 'template' }
+  'india-2027': { colors: ['1A1A1A','FAFAFA','FAFAFA','D4D4D4','FF8A3D'], weights: [700,400,600], decoration: 'typographic' }
 };
 for (const event of EVENTS) test(`${event.id}: evidence-grounded palette, fonts, offline bounded rendering`, () => {
   const theme = EVENT_THEMES[event.id];
@@ -32,19 +32,25 @@ for (const event of EVENTS) test(`${event.id}: evidence-grounded palette, fonts,
   const options = queryOptions(new Request(`https://example.test/card?username=synthetic&layout=avatar&event=${event.id}&nameColor=ABCDEF`));
   for (const [key, value] of Object.entries(theme.colors)) assert.equal(options[key], key === 'nameColor' ? 'ABCDEF' : value);
   for (const layout of ['avatar','announcement']) for (const role of ROLES) for (const avatar of [false, true]) {
-    const frame = frameFor(event.id, layout, role.id);
-    assert.equal(Boolean(frame), layout === 'avatar', 'every edition has avatar-frame artwork');
-    const rendered = renderSocial(profile, { event: event.id, layout, role: role.id, avatar }, null, frame);
-    // Bounds and word checks apply to everything except the pinned artwork payload.
-    const svg = frame ? rendered.replace(frame, '') : rendered;
-    assert.equal(rendered.length - svg.length, frame ? frame.length : 0);
+    const artwork = frameFor(event.id, layout, role.id);
+    // Every edition has avatar-frame artwork; an edition with bands makes its social card from it.
+    const derived = layout === 'announcement' && event.frameCard === true;
+    assert.equal(artwork.length, layout === 'avatar' ? 1 : derived ? 2 : 0); assert.ok(artwork.every(Boolean));
+    const rendered = renderSocial(profile, { event: event.id, layout, role: role.id, avatar }, null, ...artwork);
+    // Bounds and word checks apply to everything except the pinned artwork payloads.
+    const svg = artwork.reduce((text, data) => text.replace(data, ''), rendered);
+    assert.equal(rendered.length - svg.length, artwork.reduce((sum, data) => sum + data.length, 0));
     const doc = parseHTML(svg).document;
-    if (layout === 'announcement') {
+    if (derived) {
+      // The artwork is the design: no drawn decoration, and no color option changes it.
+      assert.equal(doc.querySelector('[data-decoration], [data-field="event"], [data-field="role"]'), null);
+      assert.equal(renderSocial(profile, { event: event.id, layout, role: role.id, avatar, headerColor: 'abcdef', nameColor: '123456', foreground: 'FEDCBA' }, null, ...artwork), rendered);
+    } else if (layout === 'announcement') {
       assert.ok(doc.querySelector(`[data-decoration="${expected[event.id].decoration}"]`));
       const custom = parseHTML(renderSocial(profile, { event: event.id, layout, headerColor: 'abcdef' })).document;
       for (const n of custom.querySelectorAll('[data-field="event"] text')) assert.equal(n.getAttribute('fill'), '#ABCDEF');
     }
-    assert.throws(() => renderSocial(profile, { event: event.id, layout, foreground: '" onload="bad' }), { code: 'invalid_color' });
+    assert.throws(() => renderSocial(profile, { event: event.id, layout, foreground: '" onload="bad' }, null, ...artwork), { code: 'invalid_color' });
     assert.equal(doc.querySelector('style').textContent, EVENT_FONT_CSS[event.id]);
     assert.equal(EVENT_FONT_STYLE_HASH[event.id], 'sha256-' + createHash('sha256').update(EVENT_FONT_CSS[event.id]).digest('base64'));
     assert.doesNotMatch(EVENT_FONT_CSS[event.id], /https?:|Garamond/);
@@ -54,15 +60,16 @@ for (const event of EVENTS) test(`${event.id}: evidence-grounded palette, fonts,
       assert.ok(face, 'selected event font');
       const field = n.closest('[data-field]').getAttribute('data-field');
       const fonts = EVENT_FONTS[event.id];
-      const assigned = { avatar: fonts.display, event: fonts.display, name: fonts.display, handle: fonts.body, eventDetails: fonts.body, role: fonts.emphasis };
+      // A card made from frame artwork sets the name like the artwork's own lines of text.
+      const assigned = { avatar: fonts.display, event: fonts.display, name: derived ? fonts.body : fonts.display, handle: fonts.body, eventDetails: fonts.body, role: fonts.emphasis };
       assert.equal(face.key, assigned[field]?.key, `${event.id}/${layout}/${role.id}/${field}: correct event font for every text role`);
       const generic = ['Cardo', 'Faculty Glyphic'].includes(face.family) ? 'serif' : 'sans-serif';
       assert.equal(n.getAttribute('font-family'), `'${face.alias}', ${generic}`, 'actual SVG font-family must match its metrics, not merely data-face');
       assert.ok(measureEventText(n.textContent, +n.getAttribute('font-size'), face) <= +n.getAttribute('data-max-width') + 0.01);
       assert.equal(+n.getAttribute('font-weight'), face.weight);
     }
-    assert.equal(doc.querySelector('script, foreignObject, a, image:not([data-field="frame"])'), null);
-    assert.equal(doc.querySelectorAll('image[data-field="frame"]').length, frame ? 1 : 0);
+    assert.equal(doc.querySelectorAll('script, foreignObject, a, image:not([data-field="frame"]):not([data-field="band"])').length, 0);
+    assert.deepEqual([...doc.querySelectorAll('image')].map(node => node.getAttribute('data-field')), artwork.length === 2 ? ['band', 'frame'] : artwork.length ? ['frame'] : []);
     assert.doesNotMatch(svg, /January 1|mandala|lotus|elephant/i);
   }
 });
@@ -72,10 +79,10 @@ test('event portraits preserve the existing two-MiB social-photo allowance', () 
   const data = 'data:image/jpeg;base64,' + Buffer.alloc(2 * 1024 * 1024).toString('base64');
   const oversized = 'data:image/jpeg;base64,' + Buffer.alloc(2 * 1024 * 1024 + 4).toString('base64');
   for (const event of EVENTS) for (const layout of ['avatar', 'announcement']) {
-    const frame = frameFor(event.id, layout);
-    assert.ok(renderSocial(profile, { event: event.id, layout }, data, frame).includes(`href="${data}"`), `${event.id}/${layout}: accepted social photo must remain embedded`);
-    assert.ok(!renderSocial(profile, { event: event.id, layout }, oversized, frame).includes('clip-path="url(#social-photo)"'), 'larger than the existing upstream photo budget stays rejected');
-    assert.ok(renderSocial(profile, { event: event.id, layout }, data, frame).includes('clip-path="url(#social-photo)"'));
+    const artwork = frameFor(event.id, layout);
+    assert.ok(renderSocial(profile, { event: event.id, layout }, data, ...artwork).includes(`href="${data}"`), `${event.id}/${layout}: accepted social photo must remain embedded`);
+    assert.ok(!renderSocial(profile, { event: event.id, layout }, oversized, ...artwork).includes('clip-path="url(#social-photo)"'), 'larger than the existing upstream photo budget stays rejected');
+    assert.ok(renderSocial(profile, { event: event.id, layout }, data, ...artwork).includes('clip-path="url(#social-photo)"'));
   }
 });
 test('non-social palettes stay unchanged and catalogue excludes heavy fonts', () => {

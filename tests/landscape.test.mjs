@@ -86,8 +86,8 @@ test('Landscape link defaults on, is independently optional and fixed-origin, an
   assert.equal(doc({ link: false }, p).querySelectorAll('a,[data-field="link"]').length, 0);
   const d = doc({ header: false, link: true, badges: false, social: false }, p);
   assert.equal(d.querySelectorAll('a').length, 1); assert.equal(d.querySelectorAll('[data-field]').length, 1);
-  assert.equal(d.querySelector('a').getAttribute('href'), 'https://profiles.wp.org/fixture/');
-  assert.equal(d.querySelector('a').textContent, 'profiles.wp.org/fixture/');
+  assert.equal(d.querySelector('a').getAttribute('href'), 'https://w.org/@fixture');
+  assert.equal(d.querySelector('a').textContent, 'w.org/@fixture');
   assert.ok(!d.querySelector('desc').textContent.includes('Empty'));
   for (const userName of ['../bad', '//evil.test', 'Uppercase', 'a\n', 'x" onclick="bad', 'a'.repeat(61)]) assert.equal(doc({ header: false, link: true }, { ...p, userName }).querySelectorAll('a').length, 0);
 });
@@ -120,9 +120,9 @@ test('Square preserves all visibility toggles, palettes, safe links, Unicode, an
     const d = doc({ layout: 'square', header, avatar, badges, link, nameColor: '123456', badgeLabelColor: 'ABCDEF' }, { ...fixture(), profileUrl: 'javascript:alert(1)' }, 'data:image/png;base64,AAAA');
     assert.equal(d.querySelectorAll('image').length, Number(header && avatar)); assert.equal(d.querySelectorAll('a').length, Number(link));
     assert.equal(d.querySelector('svg').textContent.includes('CONTRIBUTOR BADGES'), badges);
-    assert.equal([...d.querySelectorAll('text')].some(n => n.textContent.includes('@fixture')), header);
+    assert.equal([...d.querySelectorAll('text')].some(n => n.textContent === '@fixture'), header);
     if (header) assert.equal([...d.querySelectorAll('text')].find(n => n.textContent === 'Ada Example').getAttribute('fill'), '#123456');
-    if (link) assert.equal(d.querySelector('a').getAttribute('href'), 'https://profiles.wp.org/fixture/');
+    if (link) assert.equal(d.querySelector('a').getAttribute('href'), 'https://w.org/@fixture');
   }
   const svg = renderCard({ ...fixture(), name: '😀 <script>\uFFFE\uD800' }, { layout: 'square' }, 'data:image/svg+xml;base64,AAAA');
   assertXML(svg); assert.equal(parseHTML(svg).document.querySelectorAll('script,foreignObject,image').length, 0);

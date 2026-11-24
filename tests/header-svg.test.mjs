@@ -82,7 +82,7 @@ test('Landscape keeps user ID/slack removed, with independent profile and social
   assert.equal(d.querySelectorAll('[data-field="userId"],[data-field="website"],[data-field="github"],[data-field="slack"]').length, 0);
   assert.equal(d.querySelectorAll('a').length, 7);
   assert.equal(d.querySelectorAll('[data-social]').length, 6);
-  assert.equal(d.querySelector('[data-field="link"] a').getAttribute('href'), 'https://profiles.wp.org/fixture/');
+  assert.equal(d.querySelector('[data-field="link"] a').getAttribute('href'), 'https://w.org/@fixture');
   const visible = [...d.querySelectorAll('text,title,desc')].map(el => el.textContent).join(' ');
   for (const value of [p.userId, p.website.label, p.github.label, p.slack]) assert.ok(!visible.includes(value), value);
   const textHeight = Number(d.querySelector('[data-profile-text]').getAttribute('data-text-height'));

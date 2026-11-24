@@ -2,11 +2,14 @@ import { queryOptions, getProfile, getAvatarData, apiHeaders, errorResponse, Pro
 import { renderCard } from './_svg.js';
 import { renderSocial, socialStyleHash } from './_social.js';
 import { FONT_STYLE_HASH } from './_fonts.js';
+import { EVENTS } from './_events.js';
 export async function GET(request) {
   try {
     const options = queryOptions(request);
-    // Avatar frames are composed in the builder from the published PNGs; this route has no artwork.
+    // Avatar frames, and social cards derived from them, are composed in the builder from
+    // the published PNGs; this route has no artwork.
     if (options.layout === 'avatar') throw new ProfileError('invalid_option', 'layout must be classic, profile, square or announcement.');
+    if (options.layout === 'announcement' && EVENTS.find(event => event.id === options.event).frameCard) throw new ProfileError('invalid_option', 'This event\u2019s social card is not available from this route.');
     const profile = await getProfile(options.username, { refresh: options.refresh });
     const social = options.layout === 'announcement';
     const showAvatar = options.avatar && (social || options.header);

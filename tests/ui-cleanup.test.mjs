@@ -50,11 +50,10 @@ test('card presets and local background controls share one collapsed disclosure'
   assert.equal(document.querySelector('.palette-settings > .presets'), null);
 });
 
-test('export actions are download-only with PNG first', () => {
+test('the only export action is a PNG download', () => {
   const buttons = [...document.querySelectorAll('#exports button')];
   assert.deepEqual(buttons.map(button => [button.id, button.textContent]), [
     ['download-png', 'Download PNG'],
-    ['download-svg', 'Download SVG'],
   ]);
   assert.ok(buttons[0].classList.contains('primary'));
   for (const button of buttons) {

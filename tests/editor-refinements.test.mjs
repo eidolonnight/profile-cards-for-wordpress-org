@@ -16,7 +16,7 @@ function dom() {
   for (const select of document.querySelectorAll('select')) {
     Object.defineProperty(select, 'value', { writable: true, value: select.querySelector('[selected]')?.value || select.querySelector('option')?.value || '' });
   }
-  for (const input of document.querySelectorAll('input[type="checkbox"]')) input.checked = input.hasAttribute('checked');
+  for (const input of document.querySelectorAll('input[type="checkbox"], input[type="radio"]')) input.checked = input.hasAttribute('checked');
   return { document, window, $: id => document.getElementById(id) };
 }
 function editor(search = '?layout=profile', fetcher = async () => ({ ok: true, json: async () => ({ events: EVENTS, roles: ROLES }) })) {
@@ -30,7 +30,14 @@ function editor(search = '?layout=profile', fetcher = async () => ({ ok: true, j
   });
   // Exercise the complete production script; expose private functions only in this VM.
   vm.runInContext(app.replace(/\}\)\(\);\s*$/, 'globalThis.editorTest = { state, parameters, syncControls, hasVisibleContent, loadEvents, updateEventNote, validCatalog, renderCard, scheduleRender, status, clearCard };\n})();'), context);
-  return { ...env, ...context.editorTest, change(id, value) { const node = env.$(id); if (node.type === 'checkbox') node.checked = value; else node.value = value; node.dispatchEvent(new env.window.Event('change')); } };
+  return { ...env, ...context.editorTest,
+    // The selected avatar-frame shape, as the two-choice picker holds it.
+    shape() { return ['circle', 'square'].filter(kind => env.$(`shape-${kind}`).checked).join('+'); },
+    change(id, value) {
+      // Choosing a shape checks its radio, as a browser does for the group.
+      if (id === 'shape') { for (const kind of ['circle', 'square']) env.$(`shape-${kind}`).checked = kind === value; env.$(`shape-${value}`).dispatchEvent(new env.window.Event('change')); return; }
+      const node = env.$(id); if (node.type === 'checkbox') node.checked = value; else node.value = value; node.dispatchEvent(new env.window.Event('change'));
+    } };
 }
 function appearance({ saved = null, blockedRead = false, blockedWrite = false, loading = false, dark = false } = {}) {
   const env = dom(), writes = [], reads = [], listeners = {};
@@ -126,9 +133,12 @@ test('classic and WordCamp retain their own controls without modern-only options
     assert.equal(e.$('name').disabled, true);
     assert.equal(e.$('handle').disabled, layout !== 'announcement');
     assert.equal(e.$('event-settings').hidden, layout === 'classic');
-    for (const id of layout === 'classic' ? ['avatar', 'badges', 'link'] : layout === 'avatar' ? ['avatar'] : ['avatar', 'name', 'handle', 'eventDetails']) {
+    for (const id of layout === 'classic' ? ['avatar', 'badges', 'link'] : layout === 'avatar' ? ['avatar'] : ['avatar', 'name', 'handle']) {
       assert.equal(e.$(id).checked, true, `${layout}/${id} fresh`);
     }
+    // Event dates and location are part of the social card, not a choice or a parameter.
+    assert.equal(e.$('eventDetails'), null);
+    assert.equal(e.parameters('fixture').has('eventDetails'), false, layout);
   }
 });
 
@@ -163,9 +173,41 @@ test('WordCamp social cards require avatar and name while keeping username optio
   assert.equal(e.$('handle').checked, false);
   assert.equal(e.$('handle').disabled, false);
   assert.equal(e.parameters('fixture').get('handle'), 'false');
-  assert.match(e.$('public-fields-help').textContent, /avatar and name are required/i);
-  assert.match(e.$('avatar-label').textContent, /required/i);
-  assert.match(e.$('name-label').textContent, /required/i);
+});
+
+test('choices that cannot be changed are not shown', async () => {
+  const shown = e => [...e.$('display-settings').querySelectorAll('input[type="checkbox"]')].filter(input => !input.closest('[hidden]')).map(input => input.id);
+  const social = editor('?layout=announcement');
+  await social.loadEvents();
+  // The social card always has the photo, name, event dates and location.
+  assert.deepEqual(shown(social), ['handle']);
+  assert.equal(social.$('public-fields-help').hidden, true);
+  assert.equal(social.document.body.textContent.includes('(required)'), false);
+  assert.equal(/are required/i.test(social.$('display-settings').textContent), false);
+  // The avatar frame has no content choices at all.
+  social.change('layout', 'avatar');
+  assert.equal(social.$('display-settings').hidden, true);
+  // Profile formats keep every choice, including the photo and name.
+  for (const layout of ['profile', 'square']) {
+    social.change('layout', layout);
+    assert.deepEqual(shown(social), ['avatar', 'name', 'handle', 'jobTitle', 'organization', 'location', 'joined', 'teams', 'badges', 'badgeNames', 'link', 'social'], layout);
+    assert.equal(social.$('public-fields-help').hidden, false, layout);
+  }
+  social.change('layout', 'classic');
+  assert.deepEqual(shown(social), ['avatar', 'badges', 'link']);
+});
+
+test('links made while event details were a choice restore unless they turned them off', async () => {
+  for (const [search, invalid] of [
+    ['?layout=announcement&eventDetails=true', false], ['?layout=announcement&eventDetails=false', true],
+    ['?layout=avatar&eventDetails=true', false], ['?layout=avatar&eventDetails=false', false],
+    ['?layout=announcement&eventDetails=yes', true], ['?layout=announcement&eventDetails=true&eventDetails=true', true],
+    ['?layout=profile&eventDetails=true', true],
+  ]) {
+    const e = editor(search);
+    assert.equal(e.state.restoreInvalid, invalid, search);
+    assert.equal(e.$('status').dataset.kind === 'error', invalid, search);
+  }
 });
 
 test('malformed and duplicate new toggle parameters still fail validation', () => {
@@ -311,7 +353,7 @@ test('appearance tolerates denied storage, invalid saved values and cross-tab ch
 
 test('explicit URL false survives returning to a layout while new layouts default checked', async () => {
   for (const initial of ['profile', 'square', 'classic', 'avatar', 'announcement']) {
-    const applicable = initial === 'avatar' ? [] : initial === 'announcement' ? ['handle', 'eventDetails'] : initial === 'classic' ? ['avatar', 'badges', 'link'] : modernIds;
+    const applicable = initial === 'avatar' ? [] : initial === 'announcement' ? ['handle'] : initial === 'classic' ? ['avatar', 'badges', 'link'] : modernIds;
     const required = initial === 'avatar' ? ['avatar'] : initial === 'announcement' ? ['avatar', 'name'] : [];
     const e = editor(`?layout=${initial}&${applicable.map(id => `${id}=false`).join('&')}`);
     if (['avatar', 'announcement'].includes(initial)) await e.loadEvents();
@@ -383,7 +425,8 @@ test('OS appearance has a no-JavaScript CSS fallback and explicit overrides', ()
 });
 
 // A catalog whose first edition has artwork for only two roles, and whose other
-// editions have none, exercises the limits.
+// editions have none, exercises the limits. That first edition (WordCamp Asia) also
+// derives its social card from the artwork; the others draw theirs.
 const partialCatalog = () => ({ events: [{ ...EVENTS[0], frameRoles: ['attendee', 'speaker'] }, ...EVENTS.slice(1).map(({ frameRoles, ...event }) => event)], roles: ROLES });
 const partialFetcher = async () => ({ ok: true, json: async () => partialCatalog() });
 // The frame loader stands in before the catalog arrives, as the builder starts
@@ -406,27 +449,34 @@ test('avatar frames offer a shape and only roles with artwork, with no color or 
   assert.equal(e.$('role').value, 'attendee', 'a role without artwork moves to the first role with artwork');
   assert.deepEqual(roles(), Object.fromEntries(ROLES.map(role => [role.id, ['attendee', 'speaker'].includes(role.id)])));
   assert.equal(e.$('customize-colors').hidden, true);
-  assert.equal(e.$('frame-note').hidden, false);
-  assert.match(e.$('frame-note').textContent, /finished artwork/);
+  assert.equal(e.$('frame-note'), null);
   assert.equal(e.$('shape-setting').hidden, false);
-  assert.equal(e.$('shape').disabled, false);
-  assert.equal(e.$('shape').value, 'circle', 'circle is the default shape');
+  assert.equal(e.$('shape-setting').disabled, false);
+  assert.equal(e.shape(), 'circle', 'circle is the default shape');
   const params = e.parameters('fixture');
   assert.deepEqual([...params.keys()].sort(), ['avatar', 'event', 'layout', 'role', 'shape', 'username']);
   assert.equal(params.get('role'), 'attendee');
   assert.equal(params.get('shape'), 'circle');
   e.change('shape', 'square');
   assert.equal(e.parameters('fixture').get('shape'), 'square');
-  // The same edition's social card keeps every role and its controls, and has no shape.
-  e.change('layout', 'announcement'); pick(e, EVENTS[0].id, 'sponsor');
+  // A social card drawn by the project keeps every role and its controls, and has no shape.
+  e.change('layout', 'announcement'); pick(e, EVENTS[1].id, 'sponsor');
   assert.equal(e.$('role').value, 'sponsor');
   assert.ok(Object.values(roles()).every(Boolean));
   assert.equal(e.$('customize-colors').hidden, false);
-  assert.equal(e.$('frame-note').hidden, true);
   assert.equal(e.$('shape-setting').hidden, true);
-  assert.equal(e.$('shape').disabled, true);
+  assert.equal(e.$('shape-setting').disabled, true);
   assert.ok(e.parameters('fixture').has('foreground'));
   assert.equal(e.parameters('fixture').has('shape'), false);
+  // A social card derived from the frame artwork follows the artwork: its roles, no colors.
+  assert.equal(EVENTS[0].frameCard, true);
+  pick(e, EVENTS[0].id, 'sponsor');
+  assert.equal(e.$('role').value, 'attendee');
+  assert.deepEqual(roles(), Object.fromEntries(ROLES.map(role => [role.id, ['attendee', 'speaker'].includes(role.id)])));
+  assert.equal(e.$('customize-colors').hidden, true);
+  assert.equal(e.$('shape-setting').hidden, true);
+  assert.deepEqual([...e.parameters('fixture').keys()].sort(), ['avatar', 'event', 'handle', 'layout', 'name', 'role', 'username']);
+  assert.equal(e.$('display-settings').hidden || false, false, 'the username stays a choice');
   // The shape choice survives a visit to another format.
   e.change('layout', 'avatar'); pick(e, EVENTS[0].id, 'speaker');
   assert.equal(e.$('customize-colors').hidden, true);
@@ -434,19 +484,40 @@ test('avatar frames offer a shape and only roles with artwork, with no color or 
   // Leaving WordCamp formats never leaves the color controls hidden.
   e.change('layout', 'profile');
   assert.equal(e.$('customize-colors').hidden, false);
-  assert.equal(e.$('frame-note').hidden, true);
   assert.equal(e.$('shape-setting').hidden, true);
 });
 
-test('avatar frames download as PNG only and never fall back to the card route', async () => {
+test('shape is a side-by-side picker of a shaded circle and square', () => {
+  const { document: page } = parseHTML(html);
+  const picker = page.querySelector('#event-controls .event-selects > fieldset#shape-setting.shape-picker');
+  assert.equal(picker.querySelector('legend').textContent, 'Shape');
+  assert.equal(page.querySelector('select#shape'), null, 'no dropdown');
+  const options = [...picker.querySelectorAll('.shape-options > label.shape-option')];
+  assert.deepEqual(options.map(option => [option.querySelector('input').id, option.querySelector('input').type, option.querySelector('input').name, option.querySelector('input').value, option.querySelector('input').hasAttribute('checked')]),
+    [['shape-circle', 'radio', 'shape', 'circle', true], ['shape-square', 'radio', 'shape', 'square', false]]);
+  // Each choice is drawn as its shape; the name is kept for assistive technology.
+  assert.deepEqual(options.map(option => [option.querySelector('.shape-swatch').className, option.querySelector('.shape-swatch').getAttribute('aria-hidden'), option.querySelector('.sr-only').textContent]),
+    [['shape-swatch shape-swatch-circle', 'true', 'Circle'], ['shape-swatch shape-swatch-square', 'true', 'Square']]);
+  assert.match(css, /\.shape-options\{display:flex;/);
+  // Each choice is a square tile, larger than a text field is tall.
+  const tile = css.match(/\.shape-option\{([^}]*)\}/)[1];
+  const [width, height] = ['width', 'height'].map(key => Number(tile.match(new RegExp(`(?:^|;)${key}:(\\d+)px`))[1]));
+  assert.equal(width, height); assert.ok(width >= 88);
+  assert.match(tile, /flex:none/);
+  assert.match(css, /\.shape-swatch\{[^}]*background:var\(--muted\)/);
+  assert.match(css, /\.shape-swatch-circle\{border-radius:50%\}/);
+  assert.match(css, /\.shape-option:has\(input:checked\)\{[^}]*border-color:var\(--accent\)/);
+  assert.match(css, /\.shape-option:has\(input:focus-visible\)\{outline:/);
+});
+
+test('every format downloads as PNG only, and avatar frames never fall back to the card route', async () => {
   const requests = [];
   const e = editor('?layout=avatar', async url => { requests.push(String(url)); return { ok: true, json: async () => ({ events: EVENTS, roles: ROLES }) }; });
   await e.loadEvents();
-  assert.equal(e.$('download-svg').hidden, true);
-  assert.equal(e.$('download-png').hidden || false, false);
-  for (const layout of ['announcement', 'profile', 'square', 'classic']) { e.change('layout', layout); assert.equal(e.$('download-svg').hidden, false, layout); }
-  e.change('layout', 'avatar');
-  assert.equal(e.$('download-svg').hidden, true);
+  assert.equal(e.$('download-svg'), null);
+  assert.deepEqual([...e.$('exports').querySelectorAll('button')].map(button => button.textContent), ['Download PNG']);
+  assert.equal(/download(SVG|-svg)|Download SVG|download SVG/.test(app + html), false);
+  for (const layout of ['announcement', 'profile', 'square', 'classic', 'avatar']) { e.change('layout', layout); assert.equal(e.$('download-png').hidden || false, false, layout); }
   // The server has no frame artwork: without the browser renderer the failure is explicit.
   const profile = { userName: 'fixture', name: 'Fixture', badges: [], teams: [], fetchedAt: '2024-08-07T06:05:04.000Z' };
   e.state.profile = profile; e.state.username = 'fixture';
@@ -460,10 +531,10 @@ test('avatar frames download as PNG only and never fall back to the card route',
   assert.deepEqual(requests, [], 'no request to /card or anything else');
 });
 
-test('an event without an edition is not offered, and a shared link naming it is rejected', async () => {
+test('an edition that is not in the catalog is not offered, and a shared link naming it is rejected', async () => {
   assert.deepEqual(EVENTS.map(event => event.id), ['asia-2027', 'europe-2027', 'india-2027']);
   for (const layout of ['announcement', 'avatar']) {
-    const e = editor(`?layout=${layout}&event=us-2027&role=attendee`);
+    const e = editor(`?layout=${layout}&event=asia-2026&role=attendee`);
     await e.loadEvents();
     assert.deepEqual([...e.$('event').options].map(option => option.textContent), ['WordCamp Asia', 'WordCamp Europe', 'WordCamp India'], layout);
     assert.equal(e.state.restoreInvalid, true, layout);
@@ -478,7 +549,7 @@ test('shared links restore a valid shape and reject it anywhere else', async () 
   for (const search of ['?layout=avatar&shape=oval', '?layout=avatar&shape=square&shape=circle', '?layout=announcement&shape=square', '?layout=profile&shape=circle']) {
     const e = editor(search);
     assert.equal(e.$('status').dataset.kind, 'error', search);
-    assert.equal(e.$('shape').value, 'circle', search);
+    assert.equal(e.shape(), 'circle', search);
   }
 });
 
@@ -507,11 +578,12 @@ test('selecting an avatar-frame edition preloads every role, the selected one fi
   // Another edition is fetched when it is selected, again with its selected role first.
   pick(e, second.id, 'sponsor'); await settle();
   assert.deepEqual(loads.slice(ROLES.length).map(([event, role, kind]) => `${event}/${role}/${kind}`), [`${second.id}/sponsor/selected`, ...ROLES.map(role => role.id).filter(id => id !== 'sponsor').map(role => `${second.id}/${role}/background`)]);
-  // The social card needs no frame artwork.
+  // A drawn social card needs no frame artwork.
   const card = editor('?layout=announcement', fetcher);
-  card.state.frameLoader = Promise.resolve({ loadEventFrame: async () => { throw new Error('must not load'); } });
-  await card.loadEvents(); pick(card, first.id, 'speaker'); await settle();
-  assert.equal(card.state.frames.size, 0);
+  let drawnLoads = 0;
+  card.state.frameLoader = Promise.resolve({ loadEventFrame: async () => { drawnLoads++; throw new Error('must not load'); } });
+  await card.loadEvents(); pick(card, second.id, 'speaker'); await settle();
+  assert.equal(drawnLoads, 0); assert.equal(card.state.frames.size, 0);
 });
 
 test('a busy preview shows an animated indicator that reduced motion stills', () => {
@@ -543,7 +615,7 @@ test('a frame that fails to preload stays quiet and is tried again when chosen',
   pick(e, EVENTS[0].id, 'attendee'); await settle();
   assert.equal(attempts, 1);
   assert.notEqual(e.$('status').dataset.kind, 'error', 'a background failure is not reported');
-  assert.deepEqual([...e.state.frames.keys()], [`${EVENTS[0].id}/attendee`], 'the failure is not kept');
+  assert.deepEqual([...e.state.frames.keys()], [`${EVENTS[0].id}/attendee/false`], 'the failure is not kept');
   const profile = { userName: 'fixture', name: 'Fixture', badges: [], teams: [], fetchedAt: '2024-08-07T06:05:04.000Z' };
   e.state.profile = profile; e.state.username = 'fixture';
   e.state.previewInputs = { profile, fingerprint: JSON.stringify(profile), avatars: new Map([320, 1024].map(size => [size, { data: null, status: 'initials' }])) };
@@ -554,6 +626,47 @@ test('a frame that fails to preload stays quiet and is tried again when chosen',
   assert.equal(attempts, 2);
   assert.equal(e.state.ready, true, e.$('status').textContent);
   assert.equal(received.at(-1)[3], 'data:image/png;base64,speaker');
+});
+
+test('a social card made from frame artwork loads the frame and its band, takes no colors or background and never falls back', async () => {
+  const received = []; const loads = []; const requests = [];
+  const loader = Promise.resolve({ loadEventFrame: async (event, role, fetcher, band) => { loads.push([event, role, band ? 'band' : 'frame', fetcher ? 'background' : 'selected']); return `data:image/png;base64,${role}${band ? 'Band' : ''}`; } });
+  const e = await frameEditor('?layout=announcement', loader, async url => { requests.push(String(url)); return { ok: true, json: async () => partialCatalog() }; });
+  pick(e, EVENTS[0].id, 'speaker'); await settle();
+  // The edition's artwork is preloaded as for an avatar frame: selected role first, each frame with its band.
+  assert.deepEqual(loads, [[EVENTS[0].id, 'speaker', 'frame', 'selected'], [EVENTS[0].id, 'speaker', 'band', 'selected'], [EVENTS[0].id, 'attendee', 'frame', 'background'], [EVENTS[0].id, 'attendee', 'band', 'background']]);
+  const profile = { userName: 'fixture', name: 'Fixture', badges: [], teams: [], fetchedAt: '2024-08-07T06:05:04.000Z' };
+  e.state.profile = profile; e.state.username = 'fixture';
+  e.state.previewInputs = { profile, fingerprint: JSON.stringify(profile), avatars: new Map([320, 1024].map(size => [size, { data: null, status: 'initials' }])) };
+  e.state.rendererPromise = Promise.resolve((...args) => { received.push(args); return '<svg xmlns="http://www.w3.org/2000/svg"/>'; });
+  e.state.background = { dispose() {} };
+  e.state.backgroundError = 'Could not use this background.';
+  e.state.backgroundModule = { applyBackground() { throw new Error('must not composite behind frame artwork'); } };
+  await e.renderCard(e.state.renderVersion);
+  assert.equal(e.state.ready, true, e.$('status').textContent);
+  assert.deepEqual(received[0].slice(3), ['data:image/png;base64,speaker', 'data:image/png;base64,speakerBand'], 'the renderer gets the frame, then its band');
+  const sent = new URLSearchParams(received[0][1]);
+  assert.deepEqual([...sent.keys()].sort(), ['avatar', 'event', 'handle', 'layout', 'name', 'role', 'username']);
+  assert.match(e.$('card-preview').alt, /I'm speaking\. Participation announcement\./);
+  assert.equal(loads.length, 4, 'nothing is fetched twice');
+  // The avatar frame of the same edition reuses the frames and asks for no band.
+  e.change('layout', 'avatar'); await settle();
+  await e.renderCard(e.state.renderVersion);
+  assert.deepEqual(received.at(-1).slice(3), ['data:image/png;base64,speaker']);
+  assert.equal(loads.length, 4);
+  e.change('layout', 'announcement'); await settle();
+  // A drawn edition's card asks for no artwork and takes its colors and background again.
+  pick(e, EVENTS[1].id, 'speaker'); e.state.backgroundError = ''; e.state.backgroundModule = { applyBackground: svg => svg };
+  await e.renderCard(e.state.renderVersion);
+  assert.equal(received.at(-1).length, 3);
+  assert.ok(new URLSearchParams(received.at(-1)[1]).has('foreground'));
+  // Without the browser renderer there is no server-rendered card to fall back to.
+  pick(e, EVENTS[0].id, 'speaker');
+  e.state.rendererPromise = Promise.resolve(null); requests.length = 0;
+  await e.renderCard(e.state.renderVersion);
+  assert.equal(e.state.ready, false);
+  assert.match(e.$('status').textContent, /^This social card is made in your browser/);
+  assert.deepEqual(requests, [], 'no request to /card or anything else');
 });
 
 test('frame artwork loads once per role, skips local backgrounds and fails explicitly', async () => {
@@ -573,7 +686,7 @@ test('frame artwork loads once per role, skips local backgrounds and fails expli
   for (let pass = 0; pass < 2; pass++) { await e.renderCard(e.state.renderVersion); assert.equal(e.state.ready, true, e.$('status').textContent); }
   // The selected role's artwork, then the edition's other role in the background: each once.
   assert.deepEqual(loads, [[EVENTS[0].id, 'speaker'], [EVENTS[0].id, 'attendee']]);
-  assert.deepEqual(received.map(args => args[3]), ['data:image/png;base64,speaker', 'data:image/png;base64,speaker']);
+  assert.deepEqual(received.map(args => args.slice(3)), [['data:image/png;base64,speaker'], ['data:image/png;base64,speaker']], 'an avatar frame takes no band');
   assert.equal(new URLSearchParams(received[0][1]).has('foreground'), false);
   assert.equal(new URLSearchParams(received[0][1]).get('shape'), 'circle');
   assert.match(e.$('card-preview').alt, /I'm speaking\. Round avatar frame\./);
@@ -587,7 +700,7 @@ test('frame artwork loads once per role, skips local backgrounds and fails expli
   pick(e, EVENTS[1].id, 'attendee');
   await e.renderCard(e.state.renderVersion);
   assert.equal(loads.length, 2);
-  assert.equal(received.at(-1)[3], null);
+  assert.equal(received.at(-1).length, 3);
   // The local background returns for the formats that take one.
   e.change('layout', 'announcement');
   e.state.backgroundError = '';
@@ -619,13 +732,23 @@ test('restored links and catalogs fail closed on roles without frame artwork', a
   assert.equal(invalid.state.restoreInvalid, true, 'never silently switch a shared link to another role');
   assert.equal(invalid.$('empty-title').textContent, 'Check your event settings.');
   assert.equal(invalid.$('status').dataset.kind, 'error');
-  const card = await frameEditor(`?layout=announcement&event=${EVENTS[0].id}&role=sponsor`);
+  // A drawn social card has every role; one derived from the artwork has the artwork's.
+  const card = await frameEditor(`?layout=announcement&event=${EVENTS[1].id}&role=sponsor`);
   assert.equal(card.state.restoreInvalid, false);
   assert.equal(card.$('role').value, 'sponsor');
+  const derived = await frameEditor(`?layout=announcement&event=${EVENTS[0].id}&role=sponsor`);
+  assert.equal(derived.state.restoreInvalid, true);
+  assert.equal(derived.$('status').dataset.kind, 'error');
+  assert.equal((await frameEditor(`?layout=announcement&event=${EVENTS[0].id}&role=speaker`)).state.restoreInvalid, false);
   const e = editor();
   assert.equal(e.validCatalog(partialCatalog()), true);
   assert.equal(e.validCatalog({ events: EVENTS, roles: ROLES }), true);
   for (const frameRoles of [null, 'attendee', {}, [], ['attendee', 'attendee'], ['unknown'], [1], [...ROLES.map(role => role.id), 'extra']]) {
     assert.equal(e.validCatalog({ events: [{ ...EVENTS[0], frameRoles }, ...EVENTS.slice(1)], roles: ROLES }), false, JSON.stringify(frameRoles));
   }
+  // A social card can be derived only from artwork the edition has.
+  for (const frameCard of [false, null, 'true', 1, {}]) assert.equal(e.validCatalog({ events: [{ ...EVENTS[0], frameCard }, ...EVENTS.slice(1)], roles: ROLES }), false, JSON.stringify(frameCard));
+  const { frameRoles: dropped, ...withoutArtwork } = EVENTS[0];
+  assert.equal(e.validCatalog({ events: [withoutArtwork, ...EVENTS.slice(1)], roles: ROLES }), false, 'frameCard without frameRoles');
+  assert.equal(e.validCatalog({ events: [{ ...EVENTS[1], frameCard: true }, EVENTS[0], EVENTS[2]], roles: ROLES }), true);
 });

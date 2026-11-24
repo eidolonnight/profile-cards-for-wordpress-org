@@ -1,16 +1,20 @@
 import { editions as asia } from './wordcamp-asia/event.js';
 import { editions as europe } from './wordcamp-europe/event.js';
-import { editions as us } from './wordcamp-us/event.js';
 import { editions as india } from './wordcamp-india/event.js';
 import { EVENT_THEMES } from './themes.js';
 import { EVENT_FRAMES } from './frames.js';
 
 // Avatar frames are PNG artwork per edition; each lists the roles its artwork covers.
-const frameRoles = id => Object.hasOwn(EVENT_FRAMES, id) ? { frameRoles: Object.freeze(Object.keys(EVENT_FRAMES[id].roles)) } : {};
+// frameCard: the frames come with bands, so the 4:5 social card is made from them too.
+function frameRoles(id) {
+  if (!Object.hasOwn(EVENT_FRAMES, id)) return {};
+  const roles = Object.values(EVENT_FRAMES[id].roles);
+  return { frameRoles: Object.freeze(Object.keys(EVENT_FRAMES[id].roles)), ...(roles.every(role => role.band) ? { frameCard: true } : {}) };
+}
 
 // Preserve the public catalog order independently of directory ordering.
 export const EVENTS = Object.freeze([
-  ...asia, ...europe, ...us, ...india
+  ...asia, ...europe, ...india
 ].map(event => Object.freeze({ ...event, ...EVENT_THEMES[event.id], ...frameRoles(event.id) })));
 
 export const ROLES = Object.freeze([

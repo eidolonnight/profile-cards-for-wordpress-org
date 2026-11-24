@@ -23,7 +23,7 @@ const profile = { name: 'Frame Test', userName: 'frame-test' };
 const artwork = Object.entries(EVENT_FRAMES).flatMap(([event, frames]) => Object.keys(frames.roles).map(role => ({ event, role, photo: frames.photo })));
 // The project's own interim frames are drawn offline with measurable vector lettering.
 const interim = [];
-for (const folder of ['wordcamp-asia', 'wordcamp-europe', 'wordcamp-us', 'wordcamp-india']) {
+for (const folder of ['wordcamp-asia', 'wordcamp-europe', 'wordcamp-india']) {
   let manifest;
   try { manifest = JSON.parse(await readFile(new URL(`../events/${folder}/frames/manifest.json`, import.meta.url), 'utf8')); }
   catch (error) { if (error.code === 'ENOENT') continue; throw error; }
