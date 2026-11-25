@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { assertInitialDemo, assertDownloadedPNG, assertCleanupFailures } from './ui-acceptance.mjs';
+import { chooseFormat } from './builder-controls.mjs';
 
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const base = process.env.TEST_ORIGIN || 'http://127.0.0.1:4197';
@@ -21,7 +22,7 @@ try {
   assert.equal((await page.goto(base, { waitUntil: 'networkidle' })).status(), 200);
   await assertInitialDemo(page); report.checks.push('externally request-free bundled Matt demo with cached local portrait, blank username, branding, removed controls and export ordering');
   for (const layout of ['profile', 'square', 'avatar', 'announcement']) {
-    await page.locator('#layout').selectOption(layout);
+    await chooseFormat(page, layout);
     await page.waitForFunction(() => !document.getElementById('exports').disabled && document.getElementById('card-preview').complete && document.getElementById('card-preview').naturalWidth > 0);
   }
   assert.deepEqual(traffic.filter(item => ['/json', '/preview-data', '/card'].includes(item.path)), []);
@@ -34,13 +35,13 @@ try {
   await demoDownload.saveAs(evidence + '/bundled-demo.png');
   assert.ok((await readFile(evidence + '/bundled-demo.png')).subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])));
   assert.match(await page.locator('#card-preview').evaluate(async image => (await fetch(image.src)).text()), /data:image\/jpeg;base64,/);
-  assert.match(await page.locator('#cache-note').innerText(), /Bundled profile snapshot from 2026-11-03; no WordPress\.org request was made/);
-  report.checks.push('bundled/not-live disclosure remains visible after demo downloads and other transient status changes');
+  assert.equal((await page.locator('#cache-note').innerText()).trim(), 'No WordPress.org request was made.');
+  report.checks.push('the no-request note remains visible after demo downloads and other transient status changes');
   await page.locator('#username').fill('matt'); await page.locator('#create-button').click();
   await page.waitForFunction(() => !document.getElementById('exports').disabled && document.getElementById('card-preview').complete && document.getElementById('card-preview').naturalWidth > 0, null, { timeout: 45000 });
   assert.equal(traffic.filter(item => item.path === '/preview-data').length, 1);
   assert.deepEqual(traffic.filter(item => ['/json', '/card'].includes(item.path)), []);
-  assert.doesNotMatch(await page.locator('#status').innerText(), /bundled snapshot|Bundled profile snapshot/);
+  assert.doesNotMatch(await page.locator('#status').innerText(), /No WordPress\.org request was made/);
   assert.equal(await page.locator('#username').inputValue(), 'matt');
   report.checks.push('explicit Matt submission leaves the bundled snapshot and uses the normal one-request live lookup path');
   const waiting = page.waitForEvent('download'); await page.locator('#download-png').click(); const download = await waiting;

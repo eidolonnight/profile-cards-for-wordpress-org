@@ -6,8 +6,10 @@ Not all installed dependency code is necessarily bundled.
 
 WAPUU BRANDING ARTWORK
 
-site-logo.png, favicon.png and site-favicon.ico are resized derivatives of the
-user-supplied newsboy Wapuu artwork. The supplied image carries this attribution:
+favicon.png and site-favicon.ico are resized derivatives of the user-supplied
+newsboy Wapuu artwork. site-hero.webp is the same artwork mirrored to face
+left, with its WordPress mark kept the right way round. The supplied image
+carries this attribution:
 Wapuu designed by Kazuko Kaneuchi; derivative under GPL-2.0-or-later.
 WordPress trademarks remain subject to their applicable rights.
 The original supplied PNG and export recipe are in assets/branding/ in the
@@ -26,8 +28,8 @@ It is served as a versioned local asset, so the bundled demo does not request
 the live Gravatar image.
 Verified social-account fields were captured on the same date from
 https://en.gravatar.com/767fc9c115a1b989744c755db47feb60.json.
-The snapshot is used only for the request-free initial demo and is labeled as
-bundled, not live.
+The snapshot is used only for the request-free initial demo, where the page
+says that no WordPress.org request was made.
 
 
 ========================================================================

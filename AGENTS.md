@@ -15,7 +15,7 @@ These instructions apply to this project, whether checked out alone or inside a 
 
 | Source | Responsibility |
 | --- | --- |
-| `public/index.html`, `styles.css`, `app.js` | Builder UI, validated catalog loading, option state, preview lifecycle and downloads |
+| `public/index.html`, `styles.css`, `app.js` | Builder UI, validated catalog loading, option state, preview lifecycle and downloads. Format tiles and role chips mirror the `#layout` and `#role` selects, which hold the value and are never shown. The page is set in the card fonts from `shared/fonts.js`; no font files are published |
 | `public/theme.js` | Site appearance preference; separate from card colors |
 | `public/background.js` | Browser-only image validation, crop/tint and SVG compositing |
 | `shared/options.js` | Canonical query validation, compatible defaults and `ProfileError` |

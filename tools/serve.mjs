@@ -11,7 +11,8 @@ const files = new Map([['/', ['index.html', 'text/html']], ['/create', ['index.h
 const root = fileURLToPath(new URL('../public/', import.meta.url));
 files.set('/background.js', ['background.js', 'text/javascript']);
 files.set('/theme.js', ['theme.js', 'text/javascript']);
-for (const name of ['site-logo.png', 'favicon.png']) files.set(`/${name}`, [name, 'image/png']);
+files.set('/favicon.png', ['favicon.png', 'image/png']);
+files.set('/site-hero.webp', ['site-hero.webp', 'image/webp']);
 files.set('/site-favicon.ico', ['site-favicon.ico', 'image/x-icon']);
 
 // Public modules are an exact allowlist, never a filesystem path from the URL.

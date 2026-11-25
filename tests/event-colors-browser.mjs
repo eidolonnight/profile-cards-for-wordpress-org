@@ -4,6 +4,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { parseHTML } from 'linkedom/worker';
 import { cardURLFromControls, assertDownloadedPNG, assertInitialDemo } from './ui-acceptance.mjs';
+import { chooseFormat } from './builder-controls.mjs';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const origin = process.env.TEST_ORIGIN || 'http://127.0.0.1:4216';
 const evidence = process.env.EVIDENCE_DIR;
@@ -45,7 +46,7 @@ try {
   await assertInitialDemo(page); assert.equal(await page.locator('#preset-event').isHidden(), true);
   await page.locator('#username').fill('eidolonnight'); await page.locator('#create-button').click(); await ready();
   for (const layout of ['avatar', 'announcement']) {
-    await page.locator('#layout').selectOption(layout); await ready();
+    await chooseFormat(page, layout); await ready();
     // Color controls belong to a drawn social card; avatar frames are finished artwork,
     // and so is a social card derived from them (WordCamp Asia).
     const frameLayout = layout === 'avatar';
@@ -113,7 +114,7 @@ try {
   await page.locator('#preset-dark').click(); await ready();
   for (const event of catalog.events) { await page.locator('#event').selectOption(event.id); await ready(); await assertColors(Object.fromEntries(keys.map((k, i) => [k, dark[i]])), 'manual Dark palette survives every event'); }
   await page.locator('#preset-event').click(); await ready();
-  await page.locator('#layout').selectOption('profile'); await ready();
+  await page.locator('#format-profile').check(); await ready();
   await assertColors(Object.fromEntries(keys.map((k, i) => [k, light[i]])), 'automatic event colors do not leak into ordinary profile cards');
   assert.equal(await page.locator('#preset-event').isHidden(), true);
   record.checks.push('Individual overrides and manual presets persist; Event colors restores current source palette; ordinary profile defaults remain neutral');

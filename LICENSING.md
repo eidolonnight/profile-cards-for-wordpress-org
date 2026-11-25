@@ -79,7 +79,7 @@ fonts, their metrics or their provenance.
 
 ## Wapuu branding artwork
 
-The supplied newsboy Wapuu, its header logo and its favicon derivatives are
+The supplied newsboy Wapuu, its hero image and its favicon derivatives are
 GPL-2.0-or-later. Wapuu was designed by Kazuko Kaneuchi. The original supplied
 image and its embedded attribution are preserved in `assets/branding/`; see the
 [branding source and export recipe](assets/branding/README.md).

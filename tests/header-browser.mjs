@@ -3,6 +3,7 @@ import { cardURLFromControls, selectPalette, assertInitialDemo, assertDownloaded
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { parseHTML } from 'linkedom/worker';
+import { chooseFormat } from './builder-controls.mjs';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const base = process.env.TEST_ORIGIN || 'http://127.0.0.1:4197';
 const evidence = process.env.EVIDENCE_DIR;
@@ -30,7 +31,7 @@ try {
   check('malformed team omissions are rejected during builder restoration');
   assert.equal((await page.goto(base, { waitUntil: 'networkidle' })).status(), 200);
   await assertInitialDemo(page); check('fresh builder renders the bundled Matt demo without profile API requests');
-  await page.locator('#layout').selectOption('profile');
+  await page.locator('#format-profile').check();
   assert.equal(await page.locator('#layout').inputValue(), 'profile');
   assert.equal(await page.locator('#layout option:checked').innerText(), 'Landscape profile banner');
   assert.equal(await page.locator('#display-settings > legend').count(), 1);
@@ -151,13 +152,13 @@ try {
   await page.locator('#create-button').click(); const lookedUpAgain = parseHTML(await preview()).document; assert.equal(lookedUpAgain.querySelectorAll('[data-team]').length, profile.teams.length - 1); assert.equal(lookedUpAgain.querySelectorAll('[data-social]').length, initialSocialCount);
   check('team omissions and dark theme survive explicit builder URLs without removed fields');
   for (const layout of ['square', 'classic']) {
-    await page.locator('#layout').selectOption(layout); await ready();
+    await chooseFormat(page, layout); await ready();
     const url = await cardURLFromControls(page);
     assert.equal(new URL(url).searchParams.has('omitTeams'), layout === 'square');
     const response = await context.request.get(url); assert.equal(response.status(), 200);
     assert.equal(createHash('sha256').update(await preview()).digest('hex'), createHash('sha256').update(await response.text()).digest('hex'), `${layout} preview must match the canonical URL without Landscape omissions`);
   }
-  await page.locator('#layout').selectOption('profile');
+  await page.locator('#format-profile').check();
   assert.equal(parseHTML(await preview()).document.querySelectorAll('[data-team]').length, profile.teams.length - 1);
   check('team omissions apply to both modern formats, stay out of Classic, and survive switching away and back');
   await page.screenshot({ path: evidence + '/desktop-dark.png', fullPage: true }); await download('#download-png', 'header-dark.png');
