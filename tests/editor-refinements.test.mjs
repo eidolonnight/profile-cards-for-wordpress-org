@@ -387,11 +387,16 @@ test('render completion puts actual local fetch time inline before links and pre
       e.state.previewInputs = { profile, fingerprint: JSON.stringify(profile), expires: performance.now() + 10000, avatars: new Map([320, 1024].map(size => [size, { data: null, status: avatarStatus }])) };
       await e.renderCard(e.state.renderVersion);
       assert.equal(e.state.ready, true, e.$('status').textContent);
-      const expected = `Your image is ready to download. Profile fetched ${new Date(fetchedAt).toLocaleString()}.`;
+      const expected = `Hot off the press. Your image is ready to download. Profile fetched ${new Date(fetchedAt).toLocaleString()}.`;
       assert.ok(e.$('status').textContent.startsWith(expected), e.$('status').textContent);
+      assert.equal(e.$('status-lead').textContent, 'Hot off the press. ');
+      assert.equal(e.$('status-lead').tagName, 'STRONG');
+      assert.equal(e.$('status-message').textContent, 'Your image is ready to download.');
       assert.equal(e.$('cache-note').parentElement.id, 'status');
       assert.equal(e.$('cache-note').tagName, 'SPAN');
-      assert.equal(e.$('status').nextElementSibling, e.$('profile-meta'));
+      // The download comes straight after the status, then the links.
+      assert.equal(e.$('status').nextElementSibling, e.$('exports'));
+      assert.equal(e.$('exports').nextElementSibling, e.$('profile-meta'));
       for (const [key, value] of [['role', 'status'], ['aria-live', 'polite'], ['aria-atomic', 'true']]) assert.equal(e.$('status').getAttribute(key), value);
       if (avatarStatus === 'initials') assert.match(e.$('status').textContent, /The avatar could not be loaded, so initials are shown\./);
       else assert.doesNotMatch(e.$('status').textContent, /initials/);
@@ -751,4 +756,129 @@ test('restored links and catalogs fail closed on roles without frame artwork', a
   const { frameRoles: dropped, ...withoutArtwork } = EVENTS[0];
   assert.equal(e.validCatalog({ events: [withoutArtwork, ...EVENTS.slice(1)], roles: ROLES }), false, 'frameCard without frameRoles');
   assert.equal(e.validCatalog({ events: [{ ...EVENTS[1], frameCard: true }, EVENTS[0], EVENTS[2]], roles: ROLES }), true);
+});
+
+// The redesigned page shows formats as tiles and roles as chips. Each group mirrors the
+// select that holds the value, so links, restores and every other reader are unchanged.
+const tiles = e => Object.fromEntries([...e.$('format-options').querySelectorAll('input')].map(input => [input.value, input.checked]));
+const chips = e => [...e.$('role-options').children].map(chip => ({ id: chip.querySelector('input').value, label: chip.querySelector('span').textContent, checked: chip.querySelector('input').checked, hidden: chip.hidden || false, disabled: chip.querySelector('input').disabled || false }));
+// Checking a radio unchecks the rest of its group, as a browser does, then reports the change.
+const choose = (e, group, id) => { for (const input of e.$(group).querySelectorAll('input')) input.checked = input.id === id; e.$(id).dispatchEvent(new e.window.Event('change')); };
+
+test('format tiles choose the format and follow one set any other way', async () => {
+  const e = editor('?layout=announcement');
+  assert.deepEqual(tiles(e), { announcement: true, avatar: false, square: false, profile: false });
+  choose(e, 'format-options', 'format-square');
+  assert.equal(e.$('layout').value, 'square');
+  assert.equal(e.state.layout, 'square');
+  assert.equal(e.$('builder').dataset.layout, 'square');
+  assert.equal(e.$('event-settings').hidden, true, 'the tile ran the same change as the select');
+  assert.equal(e.parameters('fixture').get('layout'), 'square');
+  assert.deepEqual(tiles(e), { announcement: false, avatar: false, square: true, profile: false });
+  // A choice survives leaving a format through its tile, as it did through the select.
+  e.change('name', false);
+  choose(e, 'format-options', 'format-profile');
+  assert.equal(e.$('name').checked, true);
+  choose(e, 'format-options', 'format-square');
+  assert.equal(e.$('name').checked, false);
+  e.change('layout', 'avatar');
+  assert.deepEqual(tiles(e), { announcement: false, avatar: true, square: false, profile: false });
+  // The legacy card has no tile, so none is marked.
+  e.change('layout', 'classic');
+  assert.deepEqual(Object.values(tiles(e)), [false, false, false, false]);
+  for (const [search, expected] of [['?layout=profile', 'profile'], ['?layout=avatar', 'avatar'], ['', 'announcement'], ['?username=fixture', null]]) {
+    assert.deepEqual(Object.entries(tiles(editor(search))).filter(([, checked]) => checked).map(([value]) => value), expected ? [expected] : [], search || 'fresh');
+  }
+});
+
+test('role chips list the catalog roles, choose the role and show only roles with artwork', async () => {
+  const e = editor('?layout=announcement&event=' + EVENTS[1].id + '&role=speaker');
+  assert.deepEqual(chips(e), [], 'no chips before the catalog arrives');
+  await e.loadEvents();
+  assert.deepEqual(chips(e).map(({ id, label }) => [id, label]), ROLES.map(role => [role.id, role.label]));
+  assert.deepEqual(chips(e).filter(chip => chip.checked).map(chip => chip.id), ['speaker'], 'the restored role is marked');
+  assert.ok(chips(e).every(chip => !chip.hidden && !chip.disabled));
+  const inputs = [...e.$('role-options').querySelectorAll('input')];
+  assert.deepEqual(inputs.map(input => [input.type, input.name, input.id]), ROLES.map(role => ['radio', 'role-choice', `role-option-${role.id}`]));
+  for (const chip of e.$('role-options').children) { assert.equal(chip.tagName, 'LABEL'); assert.equal(chip.className, 'role-option'); assert.equal(chip.getAttribute('for'), chip.querySelector('input').id); }
+  choose(e, 'role-options', 'role-option-organizer');
+  assert.equal(e.$('role').value, 'organizer');
+  assert.equal(e.parameters('fixture').get('role'), 'organizer');
+  assert.deepEqual(chips(e).filter(chip => chip.checked).map(chip => chip.id), ['organizer']);
+  // Chips are kept, not rebuilt, while the role list is unchanged.
+  const first = e.$('role-options').children[0];
+  e.change('role', 'volunteer');
+  assert.equal(e.$('role-options').children[0], first);
+  assert.deepEqual(chips(e).filter(chip => chip.checked).map(chip => chip.id), ['volunteer']);
+  // An edition whose artwork covers two roles offers those two chips.
+  const limited = await frameEditor('?layout=avatar');
+  pick(limited, EVENTS[0].id, 'volunteer');
+  assert.equal(limited.$('role').value, 'attendee', 'a role without artwork moves to the first role with artwork');
+  assert.deepEqual(chips(limited).filter(chip => !chip.hidden && !chip.disabled).map(chip => chip.id), ['attendee', 'speaker']);
+  assert.ok(chips(limited).filter(chip => !['attendee', 'speaker'].includes(chip.id)).every(chip => chip.hidden && chip.disabled));
+  assert.deepEqual(chips(limited).filter(chip => chip.checked).map(chip => chip.id), ['attendee']);
+  choose(limited, 'role-options', 'role-option-speaker');
+  assert.equal(limited.$('role').value, 'speaker');
+  assert.equal(limited.parameters('fixture').get('role'), 'speaker');
+  // An edition that draws its own social card offers every role again.
+  limited.change('layout', 'announcement'); pick(limited, EVENTS[1].id, 'sponsor');
+  assert.ok(chips(limited).every(chip => !chip.hidden && !chip.disabled));
+  assert.deepEqual(chips(limited).filter(chip => chip.checked).map(chip => chip.id), ['sponsor']);
+});
+
+test('tiles, chips and the page type are styled from the same tokens as the rest of the page', () => {
+  for (const name of ['format-option', 'role-option']) {
+    assert.match(css, new RegExp(`\\.${name} input\\{position:absolute;inset:[^;]+;[^}]*opacity:0`), `${name}: the radio covers its tile`);
+    assert.match(css, new RegExp(`\\.${name}:has\\(input:focus-visible\\)\\{outline:2px solid var\\(--focus\\)`), `${name}: visible keyboard focus`);
+  }
+  // A chip is 36px tall and its radio 44px, the smallest target the page allows.
+  assert.match(css, /\.role-option\{[^}]*min-height:36px/);
+  assert.match(css, /\.role-option\{[^}]*border:1px solid/);
+  assert.match(css, /\.role-option input\{position:absolute;inset:-5px -1px;[^}]*height:calc\(100% \+ 10px\)/, 'measured from inside the 1px border');
+  assert.match(css, /\.role-options\{display:flex;flex-wrap:wrap;gap:8px 6px\}/);
+  assert.match(css, /\.format-option:has\(input:checked\)\{[^}]*border-color:var\(--accent\)/);
+  assert.match(css, /\.role-option:has\(input:checked\)\{background:var\(--primary\);border-color:var\(--primary\);color:var\(--on-primary\)\}/);
+  // The page borrows the card fonts from the renderer's module: no font files, no font requests of its own.
+  assert.match(css, /--serif:"Card Garamond",/);
+  assert.match(css, /--sans:"Card Inter",/);
+  assert.doesNotMatch(css, /@font-face|url\(/);
+  assert.doesNotMatch(html, /fonts\.googleapis|rel="preload"/);
+  assert.match(app, /import\('\/preview\/fonts\.js'\)\.then\(\(\{ FONT_CSS \}\) => \{/);
+  assert.match(app, /\}\)\.catch\(\(\) => \{ \/\* System fonts remain\. \*\/ \}\);/);
+});
+
+test('only a finished card of your own gets the lead-in', () => {
+  assert.equal(parseHTML(html).document.getElementById('status-lead').textContent, '');
+  assert.equal(app.split("'Hot off the press. '").length, 2, 'one place sets it');
+  assert.match(app, /if \(state\.demo\) status\(''\);\n\s+else status\('Your image is ready to download\.', '', 'Hot off the press\. '\);/);
+  assert.doesNotMatch(app + html, /Demo using a bundled snapshot|Enter your username to make your own/);
+  const e = editor();
+  e.status('Ready.', '', 'Lead. ');
+  assert.equal(e.$('status').textContent, 'Lead. Ready.');
+  e.status('Request failed.', 'error');
+  assert.equal(e.$('status-lead').textContent, '', 'any later status clears it');
+  assert.equal(e.$('status').textContent, 'Request failed.');
+});
+
+test('the finished demo says only that no request was made', async () => {
+  const note = 'No WordPress.org request was made.';
+  assert.doesNotMatch(app, /Bundled profile snapshot|demoSnapshotAt/);
+  for (const layout of ['announcement', 'avatar', 'square', 'profile']) {
+    const e = editor(`?layout=${layout}`);
+    if (['avatar', 'announcement'].includes(layout)) { await e.loadEvents(); e.$('event').value = EVENTS[0].id; e.$('role').value = ROLES[0].id; }
+    const profile = { userName: 'matt', name: 'Matt Mullenweg', badges: [], teams: [], fetchedAt: '2026-11-03T12:00:00.000Z' };
+    Object.assign(e.state, { profile, username: 'matt', demo: true });
+    e.state.rendererPromise = Promise.resolve(() => '<svg xmlns="http://www.w3.org/2000/svg"/>');
+    e.state.frameLoader = Promise.resolve({ loadEventFrame: async () => 'data:image/png;base64,AAAA' });
+    e.state.previewInputs = { profile, fingerprint: JSON.stringify(profile), expires: performance.now() + 10000, avatars: new Map([320, 1024].map(size => [size, { data: null, status: 'embedded' }])) };
+    await e.renderCard(e.state.renderVersion);
+    assert.equal(e.state.ready, true, layout);
+    assert.equal(e.$('status').textContent, note, layout);
+    assert.equal(e.$('status-message').textContent, '', layout);
+    assert.equal(e.$('status-lead').textContent, '', layout);
+    assert.equal(e.$('cache-note').textContent, note, 'no leading space when the note stands alone');
+    // While the demo is still working, the note follows the message.
+    e.status('Updating your preview…');
+    assert.equal(e.$('status').textContent, 'Updating your preview… ' + note);
+  }
 });

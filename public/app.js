@@ -22,7 +22,7 @@
   const state = {
     profile: null, username: '', profileVersion: 0, renderVersion: 0,
     profileController: null, renderController: null, timer: null,
-    svg: null, previewURL: null, ready: false, demo: false, demoSnapshotAt: '',
+    svg: null, previewURL: null, ready: false, demo: false,
     layout: 'announcement', layoutChoices: {}, customColorKeys: new Set(),
     selectionUsername: '', omitTeams: new Set(),
     catalog: null, catalogPromise: null, catalogFailed: false,
@@ -34,11 +34,10 @@
     backgroundBusy: false, backgroundError: '',
   };
 
-  function status(message, kind = '') {
+  function status(message, kind = '', lead = '') {
+    $('status-lead').textContent = lead;
     $('status-message').textContent = message;
-    $('cache-note').textContent = state.demo && state.demoSnapshotAt
-      ? ` Bundled profile snapshot from ${state.demoSnapshotAt.slice(0, 10)}; no WordPress.org request was made.`
-      : '';
+    $('cache-note').textContent = state.demo ? `${message ? ' ' : ''}No WordPress.org request was made.` : '';
     $('status-warning').textContent = '';
     $('status').dataset.kind = kind;
   }
@@ -90,14 +89,13 @@
     state.profile = null;
     state.username = '';
     state.demo = false;
-    state.demoSnapshotAt = '';
     if (state.inputRequest) state.inputRequest.controller.abort();
     state.inputRequest = null;
     state.previewInputs = null;
     state.previewUnavailable = false;
     cancelRender();
     $('preview-stage').setAttribute('aria-busy', 'false');
-    $('create-button').textContent = 'Create card ↗';
+    $('create-button').textContent = 'Create card';
     placeholder('A small card. Your story.', 'Enter a username to see your real profile here.');
     status('Create a card to look up this profile.');
   }
@@ -189,9 +187,34 @@
     $('headerColor').closest('label').querySelector('span').textContent = announcement ? 'Event text' : 'Header';
 
     $('open-preview').textContent = social ? 'View full-size image ↗' : 'View full-size card ↗';
+    syncChoices();
     preloadFrames();
     syncBackgroundControls();
     if (state.catalog) updateEventNote();
+  }
+
+  // The format tiles and role chips are the controls people use. #layout and #role stay
+  // the state they mirror, so everything else reads one value however it was chosen.
+  function syncChoices() {
+    const layout = $('layout').value;
+    for (const input of $('format-options').querySelectorAll('input')) input.checked = input.value === layout;
+    const chips = $('role-options'), options = [...$('role').options];
+    if (chips.children.length !== options.length || options.some((option, index) => chips.children[index].querySelector('input').value !== option.value)) {
+      chips.replaceChildren(...options.map(option => {
+        const chip = document.createElement('label'), input = document.createElement('input'), label = document.createElement('span');
+        input.type = 'radio'; input.name = 'role-choice'; input.id = `role-option-${option.value}`; input.value = option.value;
+        input.addEventListener('change', () => { $('role').value = input.value; choiceChanged(); });
+        label.textContent = option.textContent;
+        chip.className = 'role-option'; chip.setAttribute('for', input.id); chip.append(input, label);
+        return chip;
+      }));
+    }
+    options.forEach((option, index) => {
+      const chip = chips.children[index], input = chip.querySelector('input');
+      chip.hidden = option.hidden;
+      input.disabled = option.disabled;
+      input.checked = option.value === $('role').value;
+    });
   }
 
   function backgroundOptions() {
@@ -637,7 +660,6 @@
       const avatar = (size) => ({ size, data: avatarData, status: avatarData ? 'embedded' : 'initials' });
       const fingerprint = JSON.stringify(MATT_DEMO.profile);
       state.demo = true;
-      state.demoSnapshotAt = MATT_DEMO.snapshotAt;
       state.username = 'matt';
       state.profile = MATT_DEMO.profile;
       state.previewInputs = {
@@ -771,7 +793,7 @@
     const controller = new AbortController();
     state.profileController = controller;
     const timeout = setTimeout(() => controller.abort(), 30000);
-    $('create-button').textContent = 'Look up again ↗';
+    $('create-button').textContent = 'Look up again';
     $('preview-stage').setAttribute('aria-busy', 'true');
     placeholder('Finding your profile…', 'Looking up public WordPress.org profile data.');
     status(`Looking up ${username}…`);
@@ -807,7 +829,7 @@
       clearTimeout(timeout);
       if (version === state.profileVersion) {
         state.profileController = null;
-        $('create-button').textContent = 'Create card ↗';
+        $('create-button').textContent = 'Create card';
       }
     }
   }
@@ -906,9 +928,9 @@
       $('profile-meta').hidden = false;
       state.ready = true;
       $('exports').disabled = false;
-      status(state.demo
-        ? 'Demo using a bundled snapshot of Matt’s profile. Enter your username to make your own. Your image is ready to download.'
-        : 'Your image is ready to download.');
+      // The demo says only that nothing was requested; status() adds that note.
+      if (state.demo) status('');
+      else status('Your image is ready to download.', '', 'Hot off the press. ');
       const fetchedAt = typeof state.profile.fetchedAt === 'string' ? new Date(state.profile.fetchedAt) : null;
       $('cache-note').textContent = state.demo ? $('cache-note').textContent
         : fetchedAt && Number.isFinite(fetchedAt.getTime())
@@ -1063,7 +1085,7 @@
 
   $('profile-form').addEventListener('submit', submitProfile);
   $('username').addEventListener('input', invalidateProfile);
-  $('layout').addEventListener('change', () => {
+  function layoutChanged() {
     state.restoreInvalid = false;
     state.layoutChoices[state.layout] = Object.fromEntries(visibilityKeys(state.layout).map(key => [key, $(key).checked]));
     state.layout = $('layout').value;
@@ -1071,13 +1093,20 @@
     syncControls();
     scheduleRender();
     if (isSocial()) loadEvents();
+  }
+  function choiceChanged() { state.restoreInvalid = false; syncControls(); scheduleRender(); }
+  $('layout').addEventListener('change', layoutChanged);
+  for (const input of $('format-options').querySelectorAll('input')) input.addEventListener('change', () => {
+    if (!input.checked) return;
+    $('layout').value = input.value;
+    layoutChanged();
   });
   for (const key of toggles) $(key).addEventListener('change', () => {
     syncControls();
     scheduleRender();
   });
   for (const key of colors) $(key).addEventListener('input', () => { state.customColorKeys.add(key); scheduleRender(60); });
-  for (const key of ['event', 'role', 'shape-circle', 'shape-square']) $(key).addEventListener('change', () => { state.restoreInvalid = false; syncControls(); scheduleRender(); });
+  for (const key of ['event', 'role', 'shape-circle', 'shape-square']) $(key).addEventListener('change', choiceChanged);
   $('retry-events').addEventListener('click', () => loadEvents());
   $('preset-event').addEventListener('click', () => {
     if (!isSocial() || !state.catalog) return;
@@ -1107,6 +1136,13 @@
   // Do not retain local image state in a back/forward-cache page snapshot.
   addEventListener('pagehide', () => { resetBackground(); cancelRender(); });
   addEventListener('pageshow', event => { if (event.persisted) scheduleRender(); });
+  // The page is set in the card fonts. They come from the renderer's own font module,
+  // so the site publishes no font files; until it loads, system fonts stand in.
+  import('/preview/fonts.js').then(({ FONT_CSS }) => {
+    const style = document.createElement('style');
+    style.textContent = FONT_CSS;
+    document.head.append(style);
+  }).catch(() => { /* System fonts remain. */ });
   restoreSettings();
   if (!location.search) loadDemo();
 })();

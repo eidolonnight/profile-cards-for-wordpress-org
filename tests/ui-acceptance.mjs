@@ -71,7 +71,8 @@ export async function selectPalette(page, name) {
 export async function assertInitialDemo(page) {
   await ready(page);
   assert.equal(await page.title(), 'Profile Cards for WordPress.org');
-  assert.equal(await page.locator('#page-title, .intro h1, [aria-labelledby~="page-title"]').count(), 0);
+  assert.deepEqual(await page.locator('h1').allInnerTexts(), ['Show off a little.']);
+  assert.equal(await page.locator('.hero-art img').evaluate(image => image.complete && image.naturalWidth === 668 && image.naturalHeight === 840 && image.alt === ''), true, 'the hero Wapuu loads at its declared size');
   assert.equal(await page.locator('.intro-copy').innerText(), 'Bring your WordPress.org profile with you. Make a contributor card, frame your avatar, or announce your next WordCamp.');
   // The default format is the WordCamp Asia social card. It is the edition's frame
   // artwork, so it has no color or background controls.
@@ -90,24 +91,35 @@ export async function assertInitialDemo(page) {
   await page.locator('#customize-colors summary').press('Enter');
   assert.equal(await page.locator('#preset-light').isVisible(), false);
   await page.locator('#event').selectOption('asia-2027'); await ready(page);
-  assert.match(await page.locator('.wordmark').innerText(), /Profile Cards for WordPress\.org$/);
-  assert.equal(await page.locator('.edition').innerText(), 'Built for contributors');
+  assert.equal(await page.locator('.wordmark').innerText(), 'Profile cards for w.org');
+  assert.equal(await page.locator('.site-header img').count(), 0);
+  assert.equal(await page.locator('.edition').textContent(), 'Built for contributors');
   assert.equal(await page.locator('.intro .eyebrow, .privacy-note, #refresh, #try-profile, #download-json, #copy-builder').count(), 0);
   assert.equal(await page.locator('#username').inputValue(), '');
   assert.equal(await page.locator('#username').getAttribute('placeholder'), 'Your WordPress.org Username');
-  assert.match(await page.locator('#profile-form').innerText(), /normally cached for up to 1 hour[\s\S]*Recently cached details may be used while WordPress\.org limits requests/);
+  assert.match(await page.locator('.controls .cache-help').innerText(), /normally cached for up to 1 hour[\s\S]*Recently cached details may be used while WordPress\.org limits requests/);
   const actions = ['download-png'];
   await assertDownloadOnlyActions(page);
-  assert.deepEqual(await page.locator('#layout option:not([hidden])').evaluateAll(nodes => nodes.map(node => [node.value, node.textContent])), [
-    ['announcement', 'WordCamp social card'], ['avatar', 'WordCamp avatar frame'], ['square', 'Vertical profile card'], ['profile', 'Landscape profile banner'],
+  assert.deepEqual(await page.locator('#format-options .format-option').evaluateAll(nodes => nodes.map(node => [node.querySelector('input').value, node.innerText.trim(), node.querySelector('input').checked])), [
+    ['announcement', 'WordCamp social card', true], ['avatar', 'WordCamp avatar frame', false], ['square', 'Vertical profile card', false], ['profile', 'Landscape profile banner', false],
   ]);
   assert.equal(await page.locator('#layout').inputValue(), 'announcement');
-  assert.deepEqual(await page.locator('.section-heading .step').allTextContents(), ['00', '01']);
+  assert.equal(await page.locator('#layout, #role').evaluateAll(nodes => nodes.filter(node => node.offsetParent !== null).length), 0, 'the selects hold the value and are never shown');
+  // Roles are chips, one per catalog role, with the chosen role marked.
+  assert.deepEqual(await page.locator('#role-options input').evaluateAll(nodes => nodes.map(node => node.value)), await page.locator('#role option').evaluateAll(nodes => nodes.map(node => node.value)));
+  assert.deepEqual(await page.locator('#role-options input:checked').evaluateAll(nodes => nodes.map(node => node.value)), [await page.locator('#role').inputValue()]);
+  assert.deepEqual(await page.locator('.section-heading .step').allTextContents(), ['1', '2', '3']);
+  // The page is set in the card fonts, taken from the renderer's module: no font file is requested.
+  await page.waitForFunction(() => document.fonts.check('500 32px "Card Garamond"') && document.fonts.check('400 16px "Card Inter"'));
+  assert.match(await page.locator('h1').evaluate(node => getComputedStyle(node).fontFamily), /^"Card Garamond"/);
+  assert.match(await page.locator('body').evaluate(node => getComputedStyle(node).fontFamily), /^"Card Inter"/);
+  assert.deepEqual(await page.evaluate(() => performance.getEntriesByType('resource').map(entry => new URL(entry.name).pathname).filter(path => /\.(?:woff2?|ttf|otf)$/.test(path))), []);
   for (const id of ['avatar', 'name']) {
     assert.equal(await page.locator('#' + id).isChecked(), true, `${id} required default`);
     assert.equal(await page.locator('#' + id).isDisabled(), true, `${id} required control`);
   }
-  assert.equal(await page.locator('#layout option[value="classic"][hidden]').count(), 1, 'legacy classic remains available to restored URLs, not the visible menu');
+  assert.equal(await page.locator('#layout option[value="classic"]').count(), 1, 'legacy classic remains available to restored URLs');
+  assert.equal(await page.locator('#format-classic').count(), 0, 'and has no tile');
   assert.equal(await page.locator('#copy-png, #dimension-note, #export-note').count(), 0);
   assert.deepEqual(await page.locator('#exports button').evaluateAll(nodes => nodes.map(node => node.id)), actions);
   assert.equal(await page.locator('.download-actions').count(), 1);
@@ -119,7 +131,7 @@ export async function assertInitialDemo(page) {
   assert.equal(await page.locator('#card-preview').isHidden(), false);
   assert.ok(await page.locator('#card-preview').evaluate(image => image.complete && image.naturalWidth > 0));
   assert.equal(await page.locator('#profile-link').getAttribute('href'), 'https://profiles.wordpress.org/matt/');
-  assert.match(await page.locator('#status').innerText(), /Demo using a bundled snapshot of Matt’s profile[\s\S]*Bundled profile snapshot from 2026-11-03; no WordPress\.org request was made/);
+  assert.equal(await page.locator('#status').innerText(), 'No WordPress.org request was made.');
   assert.equal(await page.locator('#status-warning').innerText(), '');
   const resources = await page.evaluate(() => performance.getEntriesByType('resource').map(entry => new URL(entry.name).pathname));
   assert.deepEqual(resources.filter(path => ['/json', '/preview-data', '/card'].includes(path)), []);
@@ -267,7 +279,7 @@ export async function assertCleanupFailures(context, base) {
         if (change === 'username') {
           await page.locator('#username').fill('another-name'); await empty(page);
         } else {
-          await page.locator('#layout').selectOption('square'); await ready(page);
+          await page.locator('#format-square').check(); await ready(page);
         }
         const status = await page.locator('#status').innerText();
         await page.evaluate(() => window.releasePNG());

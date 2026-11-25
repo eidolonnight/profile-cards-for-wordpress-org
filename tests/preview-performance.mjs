@@ -5,6 +5,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
+import { chooseFormat, chooseRole } from './builder-controls.mjs';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const base = process.env.TEST_ORIGIN || 'http://127.0.0.1:4197';
 const evidence = process.env.EVIDENCE_DIR;
@@ -40,7 +41,7 @@ try {
   await assertDownloadOnlyActions(page);
   report.heading = await page.evaluate(() => {
     const el = document.querySelector('h1');
-    if (!el) return null; // The page-title heading was intentionally removed.
+    if (!el) return null;
     const css = getComputedStyle(el);
     return { text: el.textContent, fontFamily: css.fontFamily, fontSize: css.fontSize, fontWeight: css.fontWeight, lineHeight: css.lineHeight, letterSpacing: css.letterSpacing, color: css.color };
   });
@@ -48,7 +49,7 @@ try {
   await page.locator('#create-button').click(); await ready();
   // The default WordCamp Asia social card is frame artwork without color controls; open
   // the disclosure on a format that has them, so it stays open for the palette switches.
-  await page.locator('#layout').selectOption('profile'); await ready();
+  await page.locator('#format-profile').check(); await ready();
   const colors = page.locator('#customize-colors');
   if (!await colors.evaluate(el => el.open)) await colors.locator(':scope > summary').click();
   // Also time inside the browser, excluding Playwright scrolling/actionability
@@ -77,7 +78,7 @@ try {
   // The social card is measured twice as well: WordCamp Asia's is its frame artwork (a role
   // switch), another edition's is drawn (a palette switch).
   for (const [layout, event] of [['profile'], ['square'], ['avatar', 'asia-2027'], ['avatar', 'europe-2027'], ['announcement', 'asia-2027'], ['announcement', 'europe-2027']]) {
-    if (await page.locator('#layout').inputValue() !== layout) { await page.locator('#layout').selectOption(layout); await ready(); }
+    if (await page.locator('#layout').inputValue() !== layout) { await chooseFormat(page, layout); await ready(); }
     if (event && await page.locator('#event').inputValue() !== event) { await page.locator('#event').selectOption(event); await ready(); }
     const artwork = layout === 'avatar' || (layout === 'announcement' && event === 'asia-2027');
     const role = artwork ? await page.locator('#role').inputValue() : null;
@@ -88,7 +89,7 @@ try {
       const previous = await page.locator('#card-preview').getAttribute('src');
       await page.evaluate(() => performance.clearResourceTimings());
       const started = performance.now();
-      if (action.startsWith('role:')) await page.locator('#role').selectOption(action.slice(5));
+      if (action.startsWith('role:')) await chooseRole(page, action.slice(5));
       else if (layout === 'avatar') await page.locator('#shape-' + action).check();
       else if (action.endsWith('avatar')) await page.locator('#avatar').setChecked(action === 'show-avatar');
       else await page.locator('#preset-' + action).click();

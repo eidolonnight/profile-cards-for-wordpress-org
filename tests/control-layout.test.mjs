@@ -5,12 +5,18 @@ import { parseHTML } from 'linkedom/worker';
 
 const { document } = parseHTML(await readFile(new URL('../public/index.html', import.meta.url), 'utf8'));
 
-test('developer-counted steps start at 00 and the first step starts with username', () => {
-  assert.deepEqual([...document.querySelectorAll('.section-heading .step')].map(node => node.textContent), ['00', '01']);
+test('the username leads in the hero, then three numbered steps: format, settings, result', () => {
+  assert.deepEqual([...document.querySelectorAll('.section-heading')].map(node => [node.querySelector('.step').textContent, node.querySelector('h2').textContent]),
+    [['1', 'What would you like to make?'], ['2', 'Make your card'], ['3', 'Take it with you']]);
+  for (const step of document.querySelectorAll('.section-heading .step')) assert.equal(step.getAttribute('aria-hidden'), 'true');
+  const order = [...document.querySelectorAll('main #profile-form, main #layout, main #event-settings, main #display-settings, main #customize-colors, main .background-settings, main #card-preview')].map(node => node.id || node.className);
+  assert.deepEqual(order, ['profile-form', 'layout', 'event-settings', 'display-settings', 'customize-colors', 'background-settings', 'card-preview']);
+  assert.ok(document.querySelector('.hero #profile-form'), 'the username is asked for beside the page heading');
+  assert.equal(document.querySelector('main input, main select, main textarea').id, 'username');
   const controls = document.querySelector('.controls');
-  const order = [...controls.querySelectorAll('#layout, #event-settings, #profile-form, #display-settings, #customize-colors, .background-settings')].map(node => node.id || node.className);
-  assert.deepEqual(order, ['profile-form', 'layout', 'event-settings', 'display-settings', 'customize-colors', 'background-settings']);
-  assert.equal(controls.querySelector('input, select, textarea').id, 'username');
+  assert.deepEqual([...controls.querySelectorAll('#event-settings, #display-settings, #customize-colors, .background-settings')].map(node => node.id || node.className), ['event-settings', 'display-settings', 'customize-colors', 'background-settings']);
+  assert.equal(document.querySelector('.skip-link').getAttribute('href'), '#main');
+  assert.equal(document.querySelector('main').id, 'main');
   assert.equal(document.querySelector('.background-settings').closest('details').id, 'customize-colors');
   assert.equal(document.querySelector('#event-settings').hasAttribute('hidden'), true);
   assert.equal(document.querySelector('#event-controls').hasAttribute('disabled'), true);
@@ -91,8 +97,8 @@ test('about text keeps exact independent and participation copy together, withou
     assert.ok(!document.querySelector('footer').textContent.includes(copy));
   }
   assert.ok(document.getElementById('role-help').parentElement === group);
-  assert.equal(document.getElementById('role').getAttribute('aria-describedby'), 'role-help');
-  for (const href of ['https://github.com/donini/wp-profiles-card', '/THIRD-PARTY-NOTICES.txt', '/FONT-LICENSES.txt']) assert.ok(document.querySelector(`footer a[href="${href}"]`));
+  assert.equal(document.getElementById('role-setting').getAttribute('aria-describedby'), 'role-help');
+  for (const href of ['/THIRD-PARTY-NOTICES.txt', '/FONT-LICENSES.txt']) assert.ok(document.querySelector(`footer a[href="${href}"]`));
 });
 
 test('the builder no longer has a hidden master-switch dependency', async () => {

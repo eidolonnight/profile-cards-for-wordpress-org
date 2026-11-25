@@ -3,6 +3,7 @@ import { assertDownloadOnlyActions, cardURLFromControls, selectPalette, assertIn
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { parseHTML } from 'linkedom/worker';
+import { chooseFormat, chooseRole } from './builder-controls.mjs';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const base = process.env.TEST_ORIGIN || 'http://127.0.0.1:4197';
 const evidence = process.env.EVIDENCE_DIR;
@@ -81,7 +82,7 @@ try {
   assert.equal(profile.userName, 'eidolonnight'); assert.ok(profile.name); report.profile = { username: profile.userName, fetchedAt: profile.fetchedAt };
   const expectedMatrix = [];
   for (const layout of ['avatar', 'announcement']) {
-    await page.locator('#layout').selectOption(layout); await ready();
+    await chooseFormat(page, layout); await ready();
     assert.equal(await page.locator('#event-settings').isVisible(), true);
     assert.equal(await page.locator('#header').count(), 0);
     for (const hidden of ['badges', 'link', 'jobTitle', 'organization', 'location', 'joined', 'teams']) {
@@ -114,7 +115,7 @@ try {
         assert.equal(await page.locator('#customize-colors').isVisible(), !artwork, `${layout}/${event.id} color controls`);
         assert.equal(await page.locator('#frame-note').count(), 0);
         for (const role of catalog.roles) {
-          await page.locator('#role').selectOption(role.id); const svg = await preview(); const d = doc(svg); const root = d.querySelector('svg');
+          await chooseRole(page, role.id); const svg = await preview(); const d = doc(svg); const root = d.querySelector('svg');
           assert.equal(root.getAttribute('data-layout'), layout); assert.equal(root.getAttribute('width'), '1080'); assert.equal(root.getAttribute('height'), layout === 'avatar' ? '1080' : '1350');
           assert.equal(d.querySelectorAll('script,foreignObject,a').length, 0);
           const texts = [...d.querySelectorAll('text')].map(node => node.textContent.trim()).join(' ');
@@ -160,7 +161,7 @@ try {
           const key = `${layout}/${theme}/${event.id}/${role.id}`; expectedMatrix.push(key); report.matrix.push(key);
         }
       }
-      await page.locator('#event').selectOption('asia-2027'); await page.locator('#role').selectOption('attendee'); await ready();
+      await page.locator('#event').selectOption('asia-2027'); await page.locator('#role-option-attendee').check(); await ready();
       // Every format downloads as a PNG only.
       assert.equal(await page.locator('#download-svg').count(), 0);
       await pngExport(`${layout}-${theme}`, layout, frameLayout ? { shape: theme } : {});
@@ -191,7 +192,7 @@ try {
     assert.ok(doc(svg).querySelector('[data-field="name"]'));
     await page.locator('#' + id).check(); await ready();
   }
-  await page.locator('#handle').uncheck(); await page.locator('#event').selectOption('india-2027'); await page.locator('#role').selectOption('volunteer'); await ready();
+  await page.locator('#handle').uncheck(); await page.locator('#event').selectOption('india-2027'); await page.locator('#role-option-volunteer').check(); await ready();
   const beforeRestore = await preview();
   const builder = new URL(await cardURLFromControls(page)); builder.pathname = '/create'; const params = builder.searchParams;
   assert.equal(params.get('event'), 'india-2027'); assert.equal(params.get('role'), 'volunteer'); assert.equal(params.get('avatar'), 'true'); assert.equal(params.get('name'), 'true'); assert.equal(params.get('handle'), 'false'); assert.equal(params.has('eventDetails'), false);
@@ -203,7 +204,7 @@ try {
   check('required announcement identity and event details, and the optional username, survive explicit builder URLs without irrelevant parameters');
 
   // The avatar frame keeps its shape between visits and always includes the photo.
-  await page.locator('#layout').selectOption('avatar'); await ready();
+  await page.locator('#format-avatar').check(); await ready();
   assert.equal(await page.locator('#shape-circle').isChecked(), true);
   assert.equal(await page.locator('#avatar').isVisible(), false); assert.equal(await page.locator('#avatar').isChecked(), true);
   await page.locator('#event').selectOption('asia-2027'); const roundFrame = await preview();
@@ -211,29 +212,29 @@ try {
   await page.locator('#shape-square').check(); const squareFrame = await preview();
   assert.deepEqual([...doc(squareFrame).querySelector('svg').children].map(node => node.localName), ['title', 'desc', 'style', 'g', 'image']);
   for (const frame of [squareFrame, roundFrame]) assert.ok(doc(frame).querySelector('[data-field="avatar"] image'));
-  await page.locator('#layout').selectOption('announcement'); await ready(); await page.locator('#layout').selectOption('avatar'); await ready();
+  await page.locator('#format-announcement').check(); await ready(); await page.locator('#format-avatar').check(); await ready();
   assert.equal(await page.locator('#shape-square').isChecked(), true);
   await page.locator('#shape-circle').check();
   await page.locator('#event').selectOption('india-2027'); await ready();
-  await page.locator('#layout').selectOption('profile'); await ready(); assert.equal(doc(await preview()).querySelector('svg').getAttribute('data-layout'), 'profile');
+  await page.locator('#format-profile').check(); await ready(); assert.equal(doc(await preview()).querySelector('svg').getAttribute('data-layout'), 'profile');
   assert.equal(await page.locator('#event-settings').isHidden(), true); assert.equal(await page.locator('#avatar').isChecked(), true);
-  await page.locator('#layout').selectOption('square'); await ready();
+  await page.locator('#format-square').check(); await ready();
   assert.equal(doc(await preview()).querySelector('svg').getAttribute('data-layout'), 'square');
   assert.equal(await page.locator('#avatar').isChecked(), true); assert.equal(await page.locator('#badges').isChecked(), true);
   await page.locator('#badges').uncheck(); await ready();
-  await page.locator('#layout').selectOption('classic'); await ready(); assert.equal(doc(await preview()).querySelector('svg').getAttribute('width'), '720');
+  await chooseFormat(page, 'classic'); await ready(); assert.equal(doc(await preview()).querySelector('svg').getAttribute('width'), '720');
   assert.equal(await page.locator('#badges').isChecked(), true);
   await page.locator('#link').check(); assert.ok(doc(await preview()).querySelector('a'));
-  await page.locator('#layout').selectOption('avatar'); await ready(); assert.equal(await page.locator('#avatar').isChecked(), true); assert.equal(await page.locator('#shape-circle').isChecked(), true);
-  await page.locator('#layout').selectOption('announcement'); await ready(); assert.equal(await page.locator('#name').isChecked(), true); assert.equal(await page.locator('#name').isDisabled(), true); assert.equal(await page.locator('#handle').isChecked(), false);
-  await page.locator('#layout').selectOption('square'); await ready(); assert.equal(await page.locator('#badges').isChecked(), false);
+  await page.locator('#format-avatar').check(); await ready(); assert.equal(await page.locator('#avatar').isChecked(), true); assert.equal(await page.locator('#shape-circle').isChecked(), true);
+  await page.locator('#format-announcement').check(); await ready(); assert.equal(await page.locator('#name').isChecked(), true); assert.equal(await page.locator('#name').isDisabled(), true); assert.equal(await page.locator('#handle').isChecked(), false);
+  await page.locator('#format-square').check(); await ready(); assert.equal(await page.locator('#badges').isChecked(), false);
   assert.equal(await page.locator('#link').isChecked(), true); assert.equal(await page.locator('#avatar').isChecked(), true);
   check('the always-included avatar photo, the shape and independent visibility choices survive all five layouts');
 
   for (const layout of ['avatar', 'announcement']) {
-    await page.locator('#layout').selectOption(layout);
+    await chooseFormat(page, layout);
     assert.equal(await page.locator('#avatar').isChecked(), true); assert.equal(await page.locator('#avatar').isDisabled(), true);
-    await page.locator('#event').selectOption('europe-2027'); await page.locator('#role').selectOption('attendee'); if (layout === 'announcement') await selectPalette(page, 'light'); await ready();
+    await page.locator('#event').selectOption('europe-2027'); await page.locator('#role-option-attendee').check(); if (layout === 'announcement') await selectPalette(page, 'light'); await ready();
     for (const width of [1440, 1024, 768, 390, 320]) {
       await page.setViewportSize({ width, height: 950 }); await noOverflow();
       const controls = await page.locator('.controls').boundingBox(), result = await page.locator('.result').boundingBox();
@@ -269,10 +270,10 @@ try {
   await page.route('**/preview-data?*', route => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: { message: 'Test service unavailable' } }) }));
   // Cached option redraws deliberately do not contact the server. A new lookup
   // clears that snapshot and exercises the real input-error/recovery path.
-  await page.locator('#role').selectOption('organizer'); await ready();
+  await page.locator('#role-option-organizer').check(); await ready();
   await page.locator('#create-button').click(); await page.waitForFunction(() => document.getElementById('status').textContent.includes('Test service unavailable'));
   assert.equal(await page.locator('#exports').evaluate(el => el.disabled), true); assert.equal(await page.locator('#card-preview').isHidden(), true);
-  await page.unroute('**/preview-data?*'); await page.locator('#role').selectOption('attendee'); await page.locator('#create-button').click(); await ready();
+  await page.unroute('**/preview-data?*'); await page.locator('#role-option-attendee').check(); await page.locator('#create-button').click(); await ready();
   check('changing roles invalidates stale exports and failed renders recover through the real UI');
 
   const recovery = await context.newPage(); await recovery.route('**/events', route => route.abort('failed'));

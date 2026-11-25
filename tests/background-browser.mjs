@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { chooseFormat } from './builder-controls.mjs';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const origin = process.env.TEST_ORIGIN || 'http://127.0.0.1:4210';
 const evidence = process.env.EVIDENCE_DIR;
@@ -43,7 +44,7 @@ const ready = page => page.waitForFunction(() => {
 }, null, { timeout: 45000 });
 // The profile format is chosen before the lookup: the default WordCamp Asia social card is
 // frame artwork, which takes no background and has no server-rendered fallback.
-const fresh = async page => { await page.goto(origin + '/'); await page.locator('#layout').selectOption('profile'); await page.locator('#username').fill('eidolonnight'); await page.locator('#create-button').click(); await ready(page); await page.locator('#customize-colors summary').click(); };
+const fresh = async page => { await page.goto(origin + '/'); await page.locator('#format-profile').check(); await page.locator('#username').fill('eidolonnight'); await page.locator('#create-button').click(); await ready(page); await page.locator('#customize-colors summary').click(); };
 const svgSource = page => page.locator('#card-preview').evaluate(image => fetch(image.src).then(r => r.text()));
 const setControl = async (page, id, value) => {
   await page.locator('#background-' + id).evaluate((el, value) => { el.value = String(value); el.dispatchEvent(new Event('input', { bubbles: true })); }, value);
@@ -101,7 +102,7 @@ let page;
 try {
   page = await context.newPage(); await fresh(page);
   const baseline = await svgSource(page);
-  assert.equal(await page.locator('#copy-card, #copy-markdown, #copy-fallback, #copy-text, #page-title').count(), 0);
+  assert.equal(await page.locator('#copy-card, #copy-markdown, #copy-fallback, #copy-text').count(), 0);
   const fixtureData = await page.evaluate(() => {
     const c = document.createElement('canvas'); c.width = 1200; c.height = 600;
     const ctx = c.getContext('2d');
@@ -147,7 +148,7 @@ try {
   await check('PNG is processed only in browser memory; real metadata removed; position/zoom crop baked locally; full tint and matching PNG/SVG export verified');
 
   for (const layout of ['profile', 'square', 'classic', 'avatar', 'announcement']) {
-    await page.locator('#layout').selectOption(layout); await ready(page);
+    await chooseFormat(page, layout); await ready(page);
     if (layout === 'avatar') {
       // Avatar frames are finished artwork: the local background selected for the other
       // formats is neither offered nor composited behind them, in either shape or for
@@ -186,7 +187,7 @@ try {
   assert.equal(report.exports.filter(x => x.label.startsWith('frame-')).length, 4);
   await check('Four formats export matching preview/SVG/PNG pixels with the background; avatar frames never take it; legacy corners preserve transparency');
 
-  await page.locator('#layout').selectOption('profile'); await ready(page);
+  await page.locator('#format-profile').check(); await ready(page);
   for (const fixture of [jpeg, webp]) { const n = report.requests.length; await select(page, fixture); assert.ok(await backgroundImage(page)); assert.equal(report.requests.length, n); }
   await select(page, { name: 'alpha.png', mimeType: 'image/png', buffer: Buffer.from(fixtureData.transparent, 'base64') });
   await verifyExport(page, 'alpha-profile');
@@ -294,11 +295,11 @@ try {
   assert.deepEqual(await page.evaluate(() => __storageWrites), []);
   const cleanURL = page.url(); await page.reload(); await ready(page);
   assert.equal(page.url(), cleanURL); assert.equal(await page.locator('#exports').evaluate(element => element.disabled), false); assert.equal(await page.locator('#card-preview').isHidden(), false);
-  assert.match(await page.locator('#status').innerText(), /Demo using a bundled snapshot of Matt’s profile/);
+  assert.equal(await page.locator('#status').innerText(), 'No WordPress.org request was made.');
   assert.equal(await page.locator('#background-controls').isHidden(), true);
   assert.equal(await page.locator('#background-file').inputValue(), '');
   assert.deepEqual(await page.evaluate(() => ({ writes: __storageWrites, local: localStorage.length, session: sessionStorage.length })), { writes: [], local: 0, session: 0 });
-  await page.locator('#username').fill('eidolonnight'); await page.locator('#create-button').click(); await ready(page); await page.locator('#layout').selectOption('profile'); await ready(page);
+  await page.locator('#username').fill('eidolonnight'); await page.locator('#create-button').click(); await ready(page); await page.locator('#format-profile').check(); await ready(page);
   assert.equal(await backgroundImage(page), null);
   await check('Reload clears the custom image; no browser storage writes or image/query state persisted');
 

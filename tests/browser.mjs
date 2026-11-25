@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { cardURLFromControls, selectPalette, assertInitialDemo, assertDownloadedPNG, assertCleanupFailures } from './ui-acceptance.mjs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { chooseFormat } from './builder-controls.mjs';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const base = process.env.TEST_ORIGIN || 'http://127.0.0.1:4197';
 const cardLayout = process.env.CARD_LAYOUT || 'classic';
@@ -22,7 +23,7 @@ const check = name => report.checks.push(name);
 try {
   const response = await page.goto(base, { waitUntil: 'networkidle' }); assert.equal(response.status(), 200); report.version = response.headers()['x-spacefast-version'] || null;
   await assertInitialDemo(page); check('fresh builder renders the bundled Matt demo without profile API requests');
-  await page.locator('#layout').selectOption(cardLayout); check(`${cardLayout} layout remains available`);
+  await chooseFormat(page, cardLayout); check(`${cardLayout} layout remains available`);
   if (cardLayout === 'square') assert.equal(await page.locator('#layout option:checked').innerText(), 'Vertical profile card');
   await page.locator('#username').fill('eidolonnight'); await page.locator('#create-button').click(); await ready();
   const api = await context.request.get(base + '/json?username=eidolonnight'); assert.equal(api.status(), 200); const profile = await api.json(); assert.equal(profile.userName, 'eidolonnight'); assert.equal(profile.name, 'Nicholas Garofalo'); report.badges = profile.badges.length; check('live profile JSON and decoded card preview');

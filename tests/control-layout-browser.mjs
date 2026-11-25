@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { chooseFormat } from './builder-controls.mjs';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const origin = process.env.TEST_ORIGIN || 'http://127.0.0.1:4210';
 const evidence = process.env.EVIDENCE_DIR;
@@ -37,7 +38,7 @@ const capture = async (state, width) => {
   assert.ok(geometry.scroll <= width, `${state}/${width} horizontal overflow`);
   for (const target of geometry.targets) {
     assert.ok(target.width >= 44 && target.height >= 44, `Small target ${target.name}: ${JSON.stringify(target)}`);
-    assert.ok(target.x >= geometry.controls.x - 1 && target.right <= geometry.controls.right + 1, `Control outside Step 1: ${target.name}`);
+    assert.ok(target.x >= geometry.controls.x - 1 && target.right <= geometry.controls.right + 1, `Control outside Step 2: ${target.name}`);
   }
   if (width > 900) assert.ok(geometry.controls.right <= geometry.result.x);
   else assert.ok(geometry.controls.bottom <= geometry.result.y);
@@ -64,21 +65,28 @@ try {
     assert.equal(await page.locator('#exports').evaluate(element => element.disabled), false);
     assert.equal(await page.locator('#card-preview').isHidden(), false);
     assert.deepEqual(await page.evaluate(() => performance.getEntriesByType('resource').map(entry => new URL(entry.name).pathname).filter(path => ['/json', '/preview-data', '/card'].includes(path))), []);
-    assert.match(await page.locator('#status').innerText(), /Demo using a bundled snapshot of Matt’s profile/);
+    assert.equal(await page.locator('#status').innerText(), 'No WordPress.org request was made.');
     assert.equal(await page.locator('#layout').inputValue(), 'announcement');
     assert.deepEqual(await page.locator('#layout option:not([hidden])').evaluateAll(options => options.map(option => option.textContent)), ['WordCamp social card', 'WordCamp avatar frame', 'Vertical profile card', 'Landscape profile banner']);
-    assert.deepEqual(await page.locator('.section-heading .step').allTextContents(), ['00', '01']);
+    assert.deepEqual(await page.locator('.section-heading .step').allTextContents(), ['1', '2', '3']);
+    assert.deepEqual(await page.locator('#format-options input').evaluateAll(nodes => nodes.map(node => [node.value, node.checked])), [['announcement', true], ['avatar', false], ['square', false], ['profile', false]]);
+    assert.equal(await page.locator('#layout').isVisible(), false, 'the tiles are the control; the select only holds the value');
     for (const id of ['avatar', 'name']) {
       assert.equal(await page.locator('#' + id).isChecked(), true, `${id} required default`);
       assert.equal(await page.locator('#' + id).isDisabled(), true, `${id} required control`);
     }
     await page.locator('#username').fill('eidolonnight'); await page.locator('#create-button').click(); await ready();
-    await page.locator('#layout').selectOption('profile'); await ready();
+    await page.locator('#format-profile').check(); await ready();
     assert.doesNotMatch(await page.locator('.controls').innerText(), /Color palette/i);
-    assert.deepEqual(await page.locator('.controls #layout, .controls #event-settings, .controls #profile-form, .controls #display-settings, .controls #customize-colors, .controls .background-settings').evaluateAll(nodes => nodes.map(node => node.id || node.className)), ['profile-form', 'layout', 'event-settings', 'display-settings', 'customize-colors', 'background-settings']);
+    assert.deepEqual(await page.locator('main #profile-form, main #format-options, main #event-settings, main #display-settings, main #customize-colors, main .background-settings, main #card-preview').evaluateAll(nodes => nodes.map(node => node.id || node.className)), ['profile-form', 'format-options', 'event-settings', 'display-settings', 'customize-colors', 'background-settings', 'card-preview']);
+    // Keyboard order follows the page: username, its button and help link, then the chosen format.
     await page.locator('#username').focus(); await page.keyboard.press('Tab');
     assert.equal(await page.evaluate(() => document.activeElement.id), 'create-button');
-    await page.keyboard.press('Tab'); assert.equal(await page.evaluate(() => document.activeElement.id), 'layout');
+    await page.keyboard.press('Tab'); assert.equal(await page.evaluate(() => document.activeElement.getAttribute('href')), 'https://login.wordpress.org/register');
+    await page.keyboard.press('Tab'); assert.equal(await page.evaluate(() => document.activeElement.id), 'format-profile');
+    // The format tiles are one tab stop; arrow keys move between them and choose.
+    await page.keyboard.press('ArrowLeft'); await ready(); assert.equal(await page.locator('#layout').inputValue(), 'square'); assert.equal(await page.evaluate(() => document.activeElement.id), 'format-square');
+    await page.keyboard.press('ArrowRight'); await ready(); assert.equal(await page.locator('#layout').inputValue(), 'profile');
     await page.locator('#customize-colors summary').focus(); await page.keyboard.press('Enter');
     assert.equal(await page.locator('#preset-light').isVisible(), true);
     await page.keyboard.press('Enter'); assert.equal(await page.locator('#preset-light').isVisible(), false);
@@ -121,7 +129,7 @@ try {
     report.checks.push('Profile content is a fieldset legend with one two-column grid, all selected defaults and selected teams; individual all-empty guard and link-only recovery work; developer disclosure removed without losing privacy copy');
     const applicable = { profile: profileControls, square: profileControls, classic: ['avatar', 'badges', 'link'], avatar: [], announcement: ['handle'] };
     for (const layout of ['profile', 'square', 'classic', 'avatar', 'announcement']) {
-      await page.locator('#layout').selectOption(layout); await ready();
+      await chooseFormat(page, layout); await ready();
       const social = ['avatar', 'announcement'].includes(layout);
       assert.equal(await page.locator('#event-settings').isVisible(), social);
       assert.equal(await page.locator('#profile-fields').evaluate(node => node.hidden), !['profile', 'square', 'announcement'].includes(layout));
@@ -136,9 +144,17 @@ try {
       for (const id of applicable[layout]) assert.equal(await page.locator('#' + id).isChecked(), true, `${layout}/${id} fresh default`);
       assert.equal(await page.locator('#event-controls').evaluate(node => node.disabled), !social);
       if (social) {
-        await page.locator('#layout').focus(); await page.keyboard.press('Tab');
+        await page.locator(`#format-${layout}`).focus(); await page.keyboard.press('Tab');
         assert.equal(await page.evaluate(() => document.activeElement.id), 'event');
-        await page.keyboard.press('Tab'); assert.equal(await page.evaluate(() => document.activeElement.id), 'role');
+        await page.keyboard.press('Tab'); assert.equal(await page.evaluate(() => document.activeElement.id), 'event-source');
+        // The role chips are one tab stop, at the chosen role; arrow keys move and choose.
+        const role = await page.locator('#role').inputValue();
+        await page.keyboard.press('Tab'); assert.equal(await page.evaluate(() => document.activeElement.id), `role-option-${role}`);
+        assert.equal(await page.locator('#role-options input:checked').getAttribute('id'), `role-option-${role}`);
+        const chip = await page.locator(`label[for="role-option-${role}"]`).evaluate(node => ({ height: node.getBoundingClientRect().height, radius: getComputedStyle(node).borderTopLeftRadius, fill: getComputedStyle(node).backgroundColor, text: getComputedStyle(node).color }));
+        assert.equal(chip.height, 36); assert.notEqual(chip.fill, 'rgba(0, 0, 0, 0)'); assert.notEqual(chip.fill, chip.text);
+        await page.keyboard.press('ArrowRight'); await ready(); assert.notEqual(await page.locator('#role').inputValue(), role);
+        await page.keyboard.press('ArrowLeft'); await ready(); assert.equal(await page.locator('#role').inputValue(), role);
         // The avatar frame adds a shape and has no profile content to choose.
         assert.equal(await page.locator('#shape-setting').isVisible(), layout === 'avatar');
         assert.equal(await page.locator('#display-settings').isVisible(), layout !== 'avatar');
@@ -153,7 +169,7 @@ try {
           await page.keyboard.press('ArrowLeft'); await ready(); assert.equal(await page.locator('#shape-circle').isChecked(), true);
         }
         assert.equal(await page.locator('#eventDetails').count(), 0, 'event dates and location are not a choice');
-        assert.equal(await page.locator('#event-settings legend').evaluateAll(nodes => nodes.filter(node => node.offsetParent && !node.closest('#shape-setting')).length), 0, 'no WordCamp heading');
+        assert.equal(await page.locator('#event-settings legend').evaluateAll(nodes => nodes.filter(node => node.offsetParent && !node.closest('#shape-setting, #role-setting')).length), 0, 'no WordCamp heading');
         const eventBox = await page.locator('#event-settings').boundingBox(), profileBox = await page.locator('#profile-form').boundingBox();
         assert.ok(profileBox.y + profileBox.height <= eventBox.y);
       }
@@ -170,7 +186,7 @@ try {
       }
     }
     for (const layout of Object.keys(applicable)) {
-      await page.locator('#layout').selectOption(layout); await ready();
+      await chooseFormat(page, layout); await ready();
       for (const id of applicable[layout]) assert.equal(await page.locator('#' + id).isChecked(), id !== 'avatar' || layout === 'announcement', `${layout}/${id} persisted choice`);
       if (!['avatar', 'announcement'].includes(layout)) { await page.locator('#avatar').check(); await ready(); }
     }

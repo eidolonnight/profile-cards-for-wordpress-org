@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { selectPalette, cardURLFromControls, assertDownloadOnlyActions } from './ui-acceptance.mjs';
+import { chooseFormat, chooseRole } from './builder-controls.mjs';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const base = process.env.TEST_ORIGIN || 'http://127.0.0.1:4197';
 const evidence = process.env.EVIDENCE_DIR;
@@ -62,7 +63,7 @@ try {
   assert.ok(traffic.some(path => path.startsWith('/preview-data?')));
   assert.equal(traffic.filter(path => path.startsWith('/card?')).length, 0);
   for (const layout of ['profile', 'square', 'classic', 'avatar', 'announcement']) {
-    await page.locator('#layout').selectOption(layout); await ready(page);
+    await chooseFormat(page, layout); await ready(page);
     const actions = layout === 'announcement' ? ['dark', 'light'] : ['dark', 'light', 'hide-avatar', 'show-avatar'];
     // Avatar frames are PNG artwork with a shape, no palette and always the photo:
     // organizer artwork for the default edition, one of the project's interim frames for Europe.
@@ -79,7 +80,7 @@ try {
       assert.equal(await page.locator('#avatar').isVisible(), !artwork && layout !== 'announcement');
       for (const action of steps) {
         const before = traffic.length;
-        if (action.startsWith('role:')) await page.locator('#role').selectOption(action.slice(5));
+        if (action.startsWith('role:')) await chooseRole(page, action.slice(5));
         else if (artwork) await page.locator('#shape-' + action).check();
         else if (action.endsWith('avatar')) await page.locator('#avatar').setChecked(action === 'show-avatar');
         else await selectPalette(page, action);
@@ -93,7 +94,7 @@ try {
   assert.equal(report.equality.length, 14); assert.equal(report.frames.length, 6);
   assert.deepEqual(traffic.filter(path => path.startsWith('/preview-data?')).map(path => new URL(path, base).searchParams.get('size')), ['all']);
   await check('14 valid real-profile SVGs exactly equal canonical /card; 4 avatar frames and 2 frame-derived social cards render in the browser only and /card refuses them; one lookup preloads both photo variants; warm changes make zero requests');
-  await page.locator('#layout').selectOption('profile'); await ready(page);
+  await page.locator('#format-profile').check(); await ready(page);
   const beforeRapid = traffic.length;
   await page.evaluate(() => {
     for (let i = 0; i < 50; i++) {
@@ -120,7 +121,7 @@ try {
   await selectPalette(expiry, 'dark'); await ready(expiry); assert.equal(inputCount, 1);
   await selectPalette(expiry, 'light'); await ready(expiry); assert.equal(inputCount, 1);
   for (const layout of ['profile', 'square', 'classic', 'avatar', 'announcement']) {
-    await expiry.locator('#layout').selectOption(layout); await ready(expiry); assert.equal(inputCount, 1);
+    await chooseFormat(expiry, layout); await ready(expiry); assert.equal(inputCount, 1);
   }
   assert.equal(expiryTraffic.filter(path => path.startsWith('/card?')).length, 0);
   await expiry.close(); await check('zero worker freshness still keeps every passive page change local after one explicit request');

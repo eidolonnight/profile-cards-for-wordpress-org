@@ -7,10 +7,9 @@ const { document } = parseHTML(await readFile(new URL('../public/index.html', im
 
 test('community branding and username entry use the cleaned-up copy', () => {
   assert.match(document.title, /^Profile Cards for WordPress\.org(?: —|$)/);
-  const wordmark = document.querySelector('.wordmark').cloneNode(true);
-  wordmark.querySelector('.brand-mark')?.remove();
-  assert.equal(wordmark.textContent.trim(), 'Profile Cards for WordPress.org');
-  assert.equal(wordmark.getAttribute('aria-label'), 'Profile Cards for WordPress.org home');
+  const wordmark = document.querySelector('.wordmark');
+  assert.equal(wordmark.textContent.trim(), 'Profile cards for w.org');
+  assert.equal(wordmark.getAttribute('aria-label'), 'Profile cards for w.org home');
   assert.equal(document.querySelector('.edition').textContent, 'Built for contributors');
   assert.equal(document.querySelector('.intro .eyebrow, .privacy-note'), null);
   const username = document.getElementById('username');
@@ -18,13 +17,19 @@ test('community branding and username entry use the cleaned-up copy', () => {
   assert.equal(username.getAttribute('placeholder'), 'Your WordPress.org Username');
   assert.ok(document.querySelector('label[for="username"]'));
   assert.ok(username.hasAttribute('required'));
-  assert.ok(document.getElementById('profile-form').textContent.includes('Profile data is normally cached for up to 1 hour. Recently cached details may be used while WordPress.org limits requests.'));
+  assert.equal(document.querySelector('.controls .cache-help').textContent, 'Profile data is normally cached for up to 1 hour. Recently cached details may be used while WordPress.org limits requests.');
+  assert.equal(document.getElementById('create-button').textContent, 'Create card');
   assert.equal(document.querySelector('#refresh, #try-profile'), null);
 });
 
-test('the large page-title heading is removed while document title and intro remain', () => {
+test('one page heading leads the hero, above the intro', () => {
   assert.equal(document.title, 'Profile Cards for WordPress.org');
-  assert.equal(Boolean(document.querySelector('#page-title, .intro h1')), false);
+  const headings = [...document.querySelectorAll('h1')];
+  assert.equal(headings.length, 1);
+  assert.equal(headings[0].textContent, 'Show off a little.');
+  assert.equal(headings[0].id, 'page-title');
+  assert.equal(headings[0].closest('section').getAttribute('aria-labelledby'), 'page-title');
+  assert.equal(headings[0].nextElementSibling, document.querySelector('.intro'));
   assert.equal(document.querySelector('.intro').tagName, 'DIV');
   assert.equal(document.querySelector('.intro-copy').textContent, 'Bring your WordPress.org profile with you. Make a contributor card, frame your avatar, or announce your next WordCamp.');
   for (const element of document.querySelectorAll('[aria-labelledby], [aria-describedby]')) {

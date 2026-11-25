@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { cardURLFromControls, assertInitialDemo } from './ui-acceptance.mjs';
+import { chooseFormat } from './builder-controls.mjs';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const origin = process.env.TEST_ORIGIN || 'http://127.0.0.1:4214';
 const evidence = process.env.EVIDENCE_DIR;
@@ -101,7 +102,7 @@ const inspectCardGeometry = async (context, builder, layout) => {
 const capture = async (page, label, width) => {
   await page.setViewportSize({ width, height: 1000 });
   await page.evaluate(() => scrollTo(0, 0));
-  const geometry = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth, background: getComputedStyle(document.documentElement).backgroundColor, text: getComputedStyle(document.body).color, first: [...document.querySelectorAll('.controls input:not([type=file]),.controls select,.controls textarea')].find(n => n.getClientRects().length)?.id }));
+  const geometry = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth, background: getComputedStyle(document.documentElement).backgroundColor, text: getComputedStyle(document.body).color, first: [...document.querySelectorAll('main input:not([type=file]),main select,main textarea')].find(n => n.getClientRects().length)?.id }));
   assert.ok(geometry.scroll <= width, label + ' horizontal overflow');
   assert.equal(geometry.first, 'username');
   const controls = await page.evaluate(ids => {
@@ -125,7 +126,7 @@ const capture = async (page, label, width) => {
     for (let i=0; i<6; i++) { assert.ok(Math.abs(left[i].y-right[i].y) < 1, 'Content choices align in six rows'); assert.ok(Math.abs(left[i].width-right[i].width) < 1, 'Equal-width option columns'); }
   }
   assert.equal(controls.noteInStatus, true, 'Fetched timestamp shares ready status paragraph');
-  assert.match(controls.statusText.trim(), /^Your image is ready to download\.\s+Profile fetched /);
+  assert.match(controls.statusText.trim(), /^Hot off the press\. Your image is ready to download\.\s+Profile fetched /);
   assert.equal(controls.noteDisplay, 'inline');
   assert.ok(controls.button.width >= 44 && controls.button.height >= 44, 'Theme button target');
   if (!await page.evaluate(() => Boolean(globalThis.axe))) await page.addScriptTag({ path: process.env.AXE_PATH });
@@ -140,13 +141,13 @@ try {
   const page = await context.newPage();
   await navigate(page); await assertInitialDemo(page);
   assert.equal(await page.locator('link[rel=canonical]').getAttribute('href'), 'https://profiles.wapuu.news/');
-  assert.equal(await page.locator('.controls input, .controls select').first().getAttribute('id'), 'username');
+  assert.equal(await page.locator('main input, main select').first().getAttribute('id'), 'username');
   assert.equal(await page.locator('#customize-colors').evaluate(n => n.open), false);
   assert.equal(await page.locator('#background-choose').isVisible(), false);
   assert.equal(await page.locator('#customize-colors .background-settings').count(), 1);
   assert.equal(await page.locator('.about #role-help').innerText(), disclaimer);
   assert.equal(await page.locator('footer #role-help').count(), 0);
-  assert.equal(await page.locator('#role').getAttribute('aria-describedby'), 'role-help');
+  assert.equal(await page.locator('#role-setting').getAttribute('aria-describedby'), 'role-help');
   assert.equal(await page.locator('#site-theme').isVisible(), true);
   const light = await page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor);
   assert.equal(await page.locator('#site-theme').evaluate(n => n.tagName), 'BUTTON');
@@ -171,7 +172,7 @@ try {
   const profileResponse = await context.request.get(origin + '/json?username=eidolonnight'); assert.equal(profileResponse.status(), 200); const profile = await profileResponse.json();
   const layoutFields = {};
   for (const layout of ['profile', 'square']) {
-    await change(page, () => page.locator('#layout').selectOption(layout));
+    await change(page, () => chooseFormat(page, layout));
     for (const id of modern) {
       assert.equal(await page.locator('#' + id).isVisible(), true, `${layout}/${id} available`);
       assert.equal(await page.locator('#' + id).isChecked(), true, `${layout}/${id} default checked`);
@@ -251,7 +252,7 @@ try {
   report.checks.push('Landscape/Vertical content parity, individual omissions, short adjacent profile links, optional badge labels, safe linked social icons, real SVG/PNG exports, responsive light/dark axe checks');
   await page.setViewportSize({ width: 1440, height: 1000 });
   for (const layout of ['avatar', 'announcement']) {
-    await change(page, () => page.locator('#layout').selectOption(layout));
+    await change(page, () => chooseFormat(page, layout));
     assert.doesNotMatch(await page.locator('.controls').innerText(), /Catalog checked|Faculty Glyphic|Kumbh Sans|Dates and city announced|botanical accents/);
     assert.equal(await page.locator('#event-source').isVisible(), true);
     assert.equal(await page.locator('.about #role-help').innerText(), disclaimer);

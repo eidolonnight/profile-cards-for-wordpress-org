@@ -45,13 +45,13 @@ test('stage versions every browser asset edge without changing canonical sources
   assert.equal(output.revisionManifest, join(release, 'asset-revision.json'));
   for (const name of ['index.html', 'create.html']) {
     const html = await readFile(join(root, name), 'utf8');
-    const references = [...html.matchAll(/(?:src|href)="([^" ]+\.(?:js|css|png|ico)(?:\?[^" ]*)?)"/g)].map(match => match[1]);
-    assert.deepEqual(references.sort(), ['app.js', 'styles.css', 'theme.js', 'site-logo.png', 'favicon.png', 'site-favicon.ico'].map(name => `/${name}?v=${revision}`).sort());
+    const references = [...html.matchAll(/(?:src|href)="([^" ]+\.(?:js|css|png|ico|webp)(?:\?[^" ]*)?)"/g)].map(match => match[1]);
+    assert.deepEqual(references.sort(), ['app.js', 'styles.css', 'theme.js', 'site-hero.webp', 'favicon.png', 'site-favicon.ico'].map(name => `/${name}?v=${revision}`).sort());
     assert.equal(stripRevision(html), await readFile(join(source, 'public/index.html'), 'utf8'));
   }
   const app = await readFile(join(root, 'app.js'), 'utf8');
-  const references = [...app.matchAll(/(['"])(\/(?:background\.js|matt-demo\.js|preview\/preview\.js)(?:\?[^'"]*)?)\1/g)].map(match => match[2]);
-  assert.deepEqual(references, [`/background.js?v=${revision}`, `/preview/preview.js?v=${revision}`, `/preview/preview.js?v=${revision}`, `/matt-demo.js?v=${revision}`]);
+  const references = [...app.matchAll(/(['"])(\/(?:background\.js|matt-demo\.js|preview\/preview\.js|preview\/fonts\.js)(?:\?[^'"]*)?)\1/g)].map(match => match[2]);
+  assert.deepEqual(references, [`/background.js?v=${revision}`, `/preview/preview.js?v=${revision}`, `/preview/preview.js?v=${revision}`, `/matt-demo.js?v=${revision}`, `/preview/fonts.js?v=${revision}`]);
   assert.ok(app.includes(`fetch('/preview/preview.js?v=${revision}', { method: 'HEAD'`));
   assert.ok(app.includes(`import('/preview/events/frame-loader.js?v=${revision}')`));
   assert.equal(app.split('/preview/events/frame-loader.js').length, 2);
@@ -147,9 +147,9 @@ test('stage has exact manifest hashes, no dependency metadata, and refuses an ex
   const home = await temp(); const release = join(home, 'echion/projects/wp-profile-cards/releases/release-01'); const root = join(release, 'site');
   assert.equal(run(home, root).status, 0);
   const manifest = JSON.parse(await readFile(join(release, 'source-manifest.json')));
-  assert.deepEqual(manifest.map(x => x.path).sort(), ['index.html', 'app.js', 'matt-demo.js', 'matt-demo-avatar.jpg', 'theme.js', 'background.js', 'styles.css', 'site-logo.png', 'favicon.png', 'site-favicon.ico', 'create.html', 'THIRD-PARTY-NOTICES.txt', 'FONT-LICENSES.txt', 'LICENSE', 'sf.jsonc', 'functions/_fonts.js', 'functions/_profile.js', 'functions/_svg.js', 'functions/json.js', 'functions/card.js', 'functions/_events.js', 'functions/_social.js', 'functions/events.js', 'functions/preview-data.js', ...FRAME_FILES.map(([, to]) => to), 'preview/events/frame-loader.js', 'preview/preview.js', 'preview/options.js', 'preview/svg.js', 'preview/social.js', 'preview/fonts.js', 'preview/events.js', 'preview/event-fonts.js', 'preview/event-themes.js', 'shared/options.js', 'shared/svg.js', 'shared/social.js', 'shared/fonts.js', 'shared/events.js', 'robots.txt', ...EVENT_MODULES, ...EVENT_MODULES.map(path => `preview/${path}`)].sort());
+  assert.deepEqual(manifest.map(x => x.path).sort(), ['index.html', 'app.js', 'matt-demo.js', 'matt-demo-avatar.jpg', 'theme.js', 'background.js', 'styles.css', 'site-hero.webp', 'favicon.png', 'site-favicon.ico', 'create.html', 'THIRD-PARTY-NOTICES.txt', 'FONT-LICENSES.txt', 'LICENSE', 'sf.jsonc', 'functions/_fonts.js', 'functions/_profile.js', 'functions/_svg.js', 'functions/json.js', 'functions/card.js', 'functions/_events.js', 'functions/_social.js', 'functions/events.js', 'functions/preview-data.js', ...FRAME_FILES.map(([, to]) => to), 'preview/events/frame-loader.js', 'preview/preview.js', 'preview/options.js', 'preview/svg.js', 'preview/social.js', 'preview/fonts.js', 'preview/events.js', 'preview/event-fonts.js', 'preview/event-themes.js', 'shared/options.js', 'shared/svg.js', 'shared/social.js', 'shared/fonts.js', 'shared/events.js', 'robots.txt', ...EVENT_MODULES, ...EVENT_MODULES.map(path => `preview/${path}`)].sort());
   const frames = FRAME_FILES.map(([, to]) => to);
-  assert.equal(manifest.some(x => /package|test|README|manifest|provenance|\.(woff2|ttf|png)$/.test(x.path) && !['site-logo.png', 'favicon.png', ...frames].includes(x.path)), false);
+  assert.equal(manifest.some(x => /package|test|README|manifest|provenance|\.(woff2|ttf|png)$/.test(x.path) && !['favicon.png', ...frames].includes(x.path)), false);
   // Frame artwork ships as its own PNG files, byte for byte, and nowhere else: no payload
   // modules, no backend copy of the browser-only loader, nothing else from a frames/ folder.
   assert.ok(frames.length > 0 && frames.every(path => /^frames\/[a-z]+-20\d{2}-[a-z]+(?:-band)?\.png$/.test(path)));
@@ -224,10 +224,10 @@ test('local adapter serves exactly the shared allowlist and preview-data route w
     assert.equal(demoResponse.status, 200);
     assert.match(demoResponse.headers.get('Content-Type'), /^text\/javascript/);
     assert.equal(await demoResponse.text(), await readFile(new URL('../public/matt-demo.js', import.meta.url), 'utf8'));
-    for (const name of ['site-logo.png', 'favicon.png', 'site-favicon.ico']) {
+    for (const [name, type] of [['site-hero.webp', 'image/webp'], ['favicon.png', 'image/png'], ['site-favicon.ico', 'image/x-icon']]) {
       const response = await fetch(`${origin}/${name}?v=test`);
       assert.equal(response.status, 200, name);
-      assert.equal(response.headers.get('Content-Type'), name.endsWith('.ico') ? 'image/x-icon' : 'image/png');
+      assert.equal(response.headers.get('Content-Type'), type);
       assert.deepEqual(Buffer.from(await response.arrayBuffer()), await readFile(new URL(`../public/${name}`, import.meta.url)));
       const head = await fetch(`${origin}/${name}`, { method: 'HEAD' });
       assert.equal(head.status, 200); assert.equal(await head.text(), '');
