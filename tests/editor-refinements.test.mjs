@@ -837,6 +837,7 @@ test('tiles, chips and the page type are styled from the same tokens as the rest
   assert.match(css, /\.role-option input\{position:absolute;inset:-5px -1px;[^}]*height:calc\(100% \+ 10px\)/, 'measured from inside the 1px border');
   assert.match(css, /\.role-options\{display:flex;flex-wrap:wrap;gap:8px 6px\}/);
   assert.match(css, /\.format-option:has\(input:checked\)\{[^}]*border-color:var\(--accent\)/);
+  assert.match(css, /\.format-name\{[^}]*text-align:center/, 'each format name is centered under its drawing');
   assert.match(css, /\.role-option:has\(input:checked\)\{background:var\(--primary\);border-color:var\(--primary\);color:var\(--on-primary\)\}/);
   // The page borrows the card fonts from the renderer's module: no font files, no font requests of its own.
   assert.match(css, /--serif:"Card Garamond",/);

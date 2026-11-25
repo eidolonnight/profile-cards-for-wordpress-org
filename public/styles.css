@@ -87,7 +87,7 @@ h1{margin-bottom:0;font-family:var(--serif);font-weight:500;font-size:clamp(40px
 .format-option:has(input:focus-visible){outline:2px solid var(--focus);outline-offset:2px}
 .format-art{display:flex;align-items:center;justify-content:center;height:132px}
 .format-art svg{display:block;max-width:100%;max-height:100%;width:auto;height:auto}
-.format-name{font-size:14px;font-weight:600;color:var(--ink)}
+.format-name{font-size:14px;font-weight:600;color:var(--ink);text-align:center}
 .art-card{fill:var(--paper);stroke:var(--line-strong)}
 .art-photo{fill:var(--panel)}
 .art-person{fill:var(--line-strong)}
