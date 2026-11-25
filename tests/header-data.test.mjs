@@ -6,6 +6,7 @@ import { parseHTML } from 'linkedom/worker';
 import { queryOptions, parseProfile, getProfile, getAvatarData, DEFAULT_COLORS } from '../functions/_profile.js';
 import { GET as cardGET } from '../functions/card.js';
 import { FONT_CSS, FONT_STYLE_HASH } from '../functions/_fonts.js';
+import { renderCard } from '../functions/_svg.js';
 
 const controls = ['name', 'jobTitle', 'organization', 'handle', 'location', 'joined', 'userId', 'website', 'github', 'slack', 'social', 'teams'];
 const options = (params = {}) => queryOptions(new Request(`https://cards.test/card?${new URLSearchParams({ username: 'fixture', ...params })}`));
@@ -94,6 +95,43 @@ test('JSON-LD matches the exact Person identity, never a different graph person'
   }
   const structured = parseProfile(fixture().replace(ld(), ld({ '@type': ['Person'], jobTitle: 'Actual at Title', worksFor: { name: 'Actual at Organization' } })), 'fixture');
   assert.equal(structured.jobTitle, 'Actual at Title'); assert.equal(structured.organization, 'Actual at Organization');
+});
+
+// Issue #4. WordPress.org HTML-escapes the text inside its JSON-LD, so a job title with
+// an ampersand arrived as "&amp;" and was drawn that way on the card and the banner.
+test('escaped JSON-LD text is read as text, once, and never as markup', () => {
+  const line = '<p class="wp-p2-jobline">Director of Testing at Example &amp; Co</p>';
+  const page = (jobTitle, name, text) => fixture().replace(ld(), ld({ jobTitle, worksFor: { name } })).replace(line, text === null ? '' : `<p class="wp-p2-jobline">${text}</p>`);
+  for (const [jobTitle, organization, text, expected] of [
+    // As WordPress.org serves it: escaped in the JSON-LD and in the page markup.
+    ['Founder &amp; Developer', 'Design &amp; Development', 'Founder &amp; Developer at Design &amp; Development', ['Founder & Developer', 'Design & Development']],
+    ['R&amp;D Lead', 'Example &#038; Co', 'R&amp;D Lead at Example &#038; Co', ['R&D Lead', 'Example & Co']],
+    ['Editor&#8217;s Assistant', 'A &lt; B &gt; C', 'Editor&#8217;s Assistant at A &lt; B &gt; C', ['Editor’s Assistant', 'A < B > C']],
+    ['&lt;b&gt;Bold&lt;/b&gt; &quot;Lead&quot;', 'Caf&eacute; &hellip; &#x26; Co', '&lt;b&gt;Bold&lt;/b&gt; &quot;Lead&quot; at Caf&eacute; &hellip; &#x26; Co', ['<b>Bold</b> "Lead"', 'Café … & Co']],
+    // Someone whose title really contains "&amp;": escaped once more on the way, read back once.
+    ['Fan of &amp;amp;', 'Example', 'Fan of &amp;amp; at Example', ['Fan of &amp;', 'Example']],
+    // The same title if the JSON-LD were not escaped: the page text confirms it, so it is kept.
+    ['Fan of &amp;', 'Example', 'Fan of &amp;amp; at Example', ['Fan of &amp;', 'Example']],
+    // Unescaped JSON-LD stays as written, markup-like text included.
+    ['Design & Development', 'AT&T <b>', 'Design &amp; Development at AT&amp;T &lt;b&gt;', ['Design & Development', 'AT&T <b>']],
+    // With no job line to compare, the escaped reading is used and the line is built from it.
+    ['Founder &amp; Developer', 'Design &amp; Development', null, ['Founder & Developer', 'Design & Development']],
+    ['A &lt;script&gt;alert(1)&lt;/script&gt; B', 'Example', null, ['A <script>alert(1)</script> B', 'Example']],
+  ]) {
+    const p = parseProfile(page(jobTitle, organization, text), 'fixture', 0);
+    assert.deepEqual([p.jobTitle, p.organization], expected, jobTitle);
+    assert.equal(p.jobLine, expected.join(' at '), jobTitle);
+  }
+  // On the vertical card and the landscape banner the ampersand is one XML reference.
+  const p = parseProfile(page('Founder &amp; Developer', 'Design &amp; Development', 'Founder &amp; Developer at Design &amp; Development'), 'fixture', 0);
+  for (const layout of ['square', 'profile']) {
+    const svg = renderCard(p, { layout });
+    assert.doesNotMatch(svg, /&amp;amp;/, layout);
+    assert.match(svg, /Founder &amp; Developer/, layout);
+    const drawn = parseHTML(svg).document.querySelector('svg').textContent;
+    assert.match(drawn, /Founder & Developer/, layout);
+    assert.doesNotMatch(drawn, /&amp;/, layout);
+  }
 });
 
 test('malformed and executable JSON-LD is inert and falls back to the jobline', () => {

@@ -57,13 +57,23 @@ function safeLink(value) {
     return url.href;
   } catch { return null; }
 }
-function personData(document, profileUrl) {
+// WordPress.org HTML-escapes the text in its JSON-LD, so "&" arrives as "&amp;" and
+// would be drawn that way. The job line is real page text: a value it already contains
+// is kept as written, and any other is read as HTML text. "<" stays literal, so nothing
+// in the value can become markup.
+function pageText(document, value, jobLine) {
+  if (typeof value !== 'string' || !value.includes('&') || jobLine.includes(clean(value))) return value;
+  const node = document.createElement('span');
+  node.innerHTML = value.replaceAll('<', '&lt;');
+  return node.textContent;
+}
+function personData(document, profileUrl, jobLine) {
   for (const script of document.querySelectorAll('script[type="application/ld+json"]')) {
     try {
       const data = JSON.parse(script.textContent);
       if (!Array.isArray(data?.['@graph'])) continue;
       const person = data['@graph'].find(item => item && (item['@type'] === 'Person' || (Array.isArray(item['@type']) && item['@type'].includes('Person'))) && item['@id'] === `${profileUrl}#person` && (!item.url || item.url === profileUrl));
-      if (person) return { jobTitle: textField(person.jobTitle), organization: textField(person.worksFor?.name) };
+      if (person) return { jobTitle: textField(pageText(document, person.jobTitle, jobLine)), organization: textField(pageText(document, person.worksFor?.name, jobLine)) };
     } catch { /* JSON only: never evaluate page scripts or JSON-LD. */ }
   }
   return { jobTitle: '', organization: '' };
@@ -81,8 +91,8 @@ function socialAccounts(accounts) {
   return social;
 }
 function headerData(document, header, profileUrl, memberSince) {
-  let { jobTitle, organization } = personData(document, profileUrl);
   const jobLine = textField(header.querySelector('.wp-p2-jobline')?.textContent);
+  let { jobTitle, organization } = personData(document, profileUrl, jobLine);
   // Keep the raw job line, while recovering independent controls on older pages.
   if (!jobTitle && !organization && jobLine) {
     const parts = /^(.*?)\s+at\s+(.+)$/.exec(jobLine);
